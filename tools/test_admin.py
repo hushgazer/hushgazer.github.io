@@ -108,7 +108,7 @@ with sync_playwright() as p:
     pg.wait_for_selector('#admin-bar'); pg.wait_for_selector('li[data-slug=lion] [data-act=hide]')
     pg.once('dialog', lambda d: d.accept())
     pg.click('li[data-slug=lion] [data-act=hide]'); pg.wait_for_selector('li[data-slug=lion] [data-act=unhide]')
-    assert 'Hide requested' in pg.text_content('li[data-slug=lion] .adm-chip')
+    assert 'Hidden' in pg.text_content('li[data-slug=lion] .adm-chip')
     pg.on('dialog', lambda d: d.dismiss()); pg.click('li[data-slug=kraken] [data-act=delete]'); pg.wait_for_timeout(300)
     assert len(posts) == 1, 'cancelled delete must not send'
     c.close()
