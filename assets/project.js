@@ -297,19 +297,28 @@
         'aria-label': 'Pick ' + (idx + 1) + '. Drag to reorder.'
       });
       card.appendChild(el('span', { class: 'preview-badge sm', 'aria-hidden': 'true' }, '#' + (idx + 1)));
-      var cv = cropCanvas(e.c, e.o, 72);
+      var cv = cropCanvas(e.c, e.o, 140);
       if (cv) { cv.setAttribute('aria-hidden', 'true'); card.appendChild(cv); }
+      var x = el('button', { type: 'button', class: 'preview-x', 'aria-label': 'Remove pick ' + (idx + 1) }, '×');
+      x.addEventListener('pointerdown', function (ev) { ev.stopPropagation(); });
+      x.addEventListener('click', function (ev) {
+        ev.preventDefault(); ev.stopPropagation();
+        togglePick(e.c, e.o); // deselects on collage + removes from bar + renumbers
+      });
+      card.appendChild(x);
       bindPreviewDrag(card, idx);
       bar.appendChild(card);
     });
   }
 
-  // Pointer-based drag (mouse + touch) to reorder preview cards in the sticky bar.
+  // Pointer-based drag (mouse + touch). The card lifts into a floating clone that
+  // follows the pointer; a dashed gap shows where it will land; drop to place.
   var dragState = null;
   function bindPreviewDrag(fig, idx) {
     fig.addEventListener('pointerdown', function (ev) {
       if (ev.button != null && ev.button !== 0) return;
       if (ev.target.closest && ev.target.closest('a,button')) return;
+      if (dragState) return;
       ev.preventDefault();
       startPreviewDrag(fig, idx, ev);
     });
@@ -318,75 +327,110 @@
         ev.preventDefault(); movePreview(idx, idx - 1);
       } else if (ev.key === 'ArrowRight' || ev.key === 'ArrowDown') {
         ev.preventDefault(); movePreview(idx, idx + 1);
+      } else if (ev.key === 'Delete' || ev.key === 'Backspace') {
+        ev.preventDefault(); var e = lineupOrder[idx]; if (e) togglePick(e.c, e.o);
       }
     });
   }
   function startPreviewDrag(fig, fromIdx, ev) {
     var strip = document.getElementById('bar-thumbs');
     var rect = fig.getBoundingClientRect();
-    dragState = {
-      from: fromIdx, over: fromIdx, fig: fig,
+    var st = dragState = {
+      from: fromIdx, over: fromIdx, fig: fig, started: false,
+      sx: ev.clientX, sy: ev.clientY, x: ev.clientX, y: ev.clientY,
       ox: ev.clientX - rect.left, oy: ev.clientY - rect.top,
-      ghost: null
+      ghost: null, ph: null, raf: 0
     };
-    fig.classList.add('is-dragging');
-    fig.setAttribute('aria-grabbed', 'true');
-    document.body.classList.add('lineup-dragging');
     try { fig.setPointerCapture(ev.pointerId); } catch (e) {}
-    var ghost = fig.cloneNode(true);
-    ghost.classList.add('preview-ghost'); ghost.removeAttribute('data-idx');
-    ghost.style.width = rect.width + 'px';
-    ghost.style.height = rect.height + 'px';
-    ghost.style.left = (ev.clientX - dragState.ox) + 'px';
-    ghost.style.top = (ev.clientY - dragState.oy) + 'px';
-    var srcCvs = fig.querySelectorAll('canvas');
-    var dstCvs = ghost.querySelectorAll('canvas');
-    for (var i = 0; i < srcCvs.length; i++) {
-      dstCvs[i].width = srcCvs[i].width; dstCvs[i].height = srcCvs[i].height;
-      dstCvs[i].getContext('2d').drawImage(srcCvs[i], 0, 0);
+    function lift() {
+      st.started = true;
+      var ghost = fig.cloneNode(true);
+      ghost.classList.add('preview-ghost'); ghost.removeAttribute('data-idx'); ghost.removeAttribute('tabindex');
+      var gx = ghost.querySelector('.preview-x'); if (gx) gx.remove();
+      ghost.style.width = rect.width + 'px';
+      ghost.style.height = rect.height + 'px';
+      var srcCvs = fig.querySelectorAll('canvas'), dstCvs = ghost.querySelectorAll('canvas');
+      for (var i = 0; i < srcCvs.length; i++) {
+        dstCvs[i].width = srcCvs[i].width; dstCvs[i].height = srcCvs[i].height;
+        dstCvs[i].getContext('2d').drawImage(srcCvs[i], 0, 0);
+      }
+      document.body.appendChild(ghost);
+      st.ghost = ghost;
+      var ph = el('div', { class: 'preview-drop', 'aria-hidden': 'true' });
+      ph.style.width = rect.width + 'px'; ph.style.height = rect.height + 'px';
+      ph.appendChild(el('span', null, 'Drop here'));
+      st.ph = ph;
+      fig.classList.add('is-dragging');
+      fig.setAttribute('aria-grabbed', 'true');
+      document.body.classList.add('lineup-dragging');
+      if (navigator.vibrate) { try { navigator.vibrate(12); } catch (e) {} }
+      place();
+      requestAnimationFrame(function () { if (st.ghost) st.ghost.classList.add('lifted'); });
+      autoScroll();
     }
-    document.body.appendChild(ghost);
-    dragState.ghost = ghost;
-    function onMove(e) {
-      if (!dragState) return;
-      e.preventDefault();
-      ghost.style.left = (e.clientX - dragState.ox) + 'px';
-      ghost.style.top = (e.clientY - dragState.oy) + 'px';
-      var cx = e.clientX;
+    function place() {
+      st.ghost.style.transform = 'translate(' + (st.x - st.ox) + 'px,' + (st.y - st.oy) + 'px)';
       var others = Array.prototype.slice.call(strip.querySelectorAll('.preview-card:not(.is-dragging)'));
       var insertAt = others.length;
       for (var k = 0; k < others.length; k++) {
         var rr = others[k].getBoundingClientRect();
-        if (cx < rr.left + rr.width / 2) { insertAt = k; break; }
+        // same row (wrap-safe) and left of midpoint, or on an earlier row
+        if (st.y < rr.top) { insertAt = k; break; }
+        if (st.y <= rr.bottom && st.x < rr.left + rr.width / 2) { insertAt = k; break; }
       }
-      if (insertAt !== dragState.over) {
-        dragState.over = insertAt;
-        strip.querySelectorAll('.preview-card').forEach(function (c) { c.classList.remove('drop-before', 'drop-after'); });
-        if (others[insertAt]) others[insertAt].classList.add('drop-before');
-        else if (others.length) others[others.length - 1].classList.add('drop-after');
+      if (insertAt === st.over && st.ph.parentNode) return;
+      st.over = insertAt;
+      if (insertAt === st.from) {          // back home: highlight original slot
+        if (st.ph.parentNode) st.ph.remove();
+        fig.classList.add('is-home');
+      } else {
+        fig.classList.remove('is-home');
+        if (others[insertAt]) strip.insertBefore(st.ph, others[insertAt]);
+        else strip.appendChild(st.ph);
       }
     }
-    function onUp() {
-      if (!dragState) return;
+    function autoScroll() {
+      if (!dragState || !st.started) return;
+      var r = strip.getBoundingClientRect(), edge = 48, v = 0;
+      if (st.x < r.left + edge) v = -Math.ceil((r.left + edge - st.x) / 4);
+      else if (st.x > r.right - edge) v = Math.ceil((st.x - (r.right - edge)) / 4);
+      if (v) { strip.scrollLeft += v; place(); }
+      st.raf = requestAnimationFrame(autoScroll);
+    }
+    function onMove(e) {
+      if (dragState !== st) return;
+      e.preventDefault();
+      st.x = e.clientX; st.y = e.clientY;
+      if (!st.started) {
+        if (Math.abs(st.x - st.sx) + Math.abs(st.y - st.sy) < 6) return;
+        lift();
+      }
+      place();
+    }
+    function onUp(e) {
+      if (dragState !== st) return;
       try { fig.releasePointerCapture(ev.pointerId); } catch (err) {}
       fig.removeEventListener('pointermove', onMove);
       fig.removeEventListener('pointerup', onUp);
       fig.removeEventListener('pointercancel', onUp);
-      var insertAt = dragState.over;
-      var from = dragState.from;
-      if (dragState.ghost) dragState.ghost.remove();
-      fig.classList.remove('is-dragging');
+      cancelAnimationFrame(st.raf);
+      dragState = null;
+      if (!st.started) return;               // plain tap: nothing to do
+      var insertAt = st.over, from = st.from, cancelled = e && e.type === 'pointercancel';
+      if (st.ghost) st.ghost.remove();
+      if (st.ph && st.ph.parentNode) st.ph.remove();
+      fig.classList.remove('is-dragging', 'is-home');
       fig.setAttribute('aria-grabbed', 'false');
       document.body.classList.remove('lineup-dragging');
-      strip.querySelectorAll('.preview-card').forEach(function (c) { c.classList.remove('drop-before', 'drop-after'); });
-      dragState = null;
-      if (insertAt != null) {
+      if (!cancelled && insertAt != null && insertAt !== from) {
         var item = lineupOrder.splice(from, 1)[0];
         if (insertAt > lineupOrder.length) insertAt = lineupOrder.length;
         lineupOrder.splice(insertAt, 0, item);
         save();
       }
+      var keep = strip.scrollLeft;
       renderSummary();
+      strip.scrollLeft = keep;
     }
     fig.addEventListener('pointermove', onMove);
     fig.addEventListener('pointerup', onUp);
