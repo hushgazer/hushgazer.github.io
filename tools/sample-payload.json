@@ -3,7 +3,7 @@
   "project": "demo",
   "projectTitle": "Demo Project (Sample)",
   "clientName": "Test Client",
-  "submittedAt": "2026-10-19T13:22:44.223Z",
+  "submittedAt": "2026-10-19T13:33:17.163Z",
   "picks": [
     {
       "collage": 1,
@@ -31,9 +31,9 @@
         "h": 800
       },
       "crop": {
-        "x": 457,
+        "x": 456,
         "y": 0,
-        "w": 457,
+        "w": 458,
         "h": 800
       }
     },

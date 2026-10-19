@@ -5,17 +5,49 @@
     {
       "file": "collage-1.png",
       "options": 8,
-      "label": "Collage 1"
+      "label": "Collage 1",
+      "columns": [
+        0,
+        400,
+        800,
+        1200,
+        1600,
+        2000,
+        2400,
+        2800,
+        3200
+      ]
     },
     {
       "file": "collage-2.png",
       "options": 7,
-      "label": "Collage 2"
+      "label": "Collage 2",
+      "columns": [
+        0,
+        456,
+        914,
+        1370,
+        1828,
+        2284,
+        2742,
+        3200
+      ]
     },
     {
       "file": "collage-3.png",
       "options": 8,
-      "label": "Collage 3"
+      "label": "Collage 3",
+      "columns": [
+        0,
+        400,
+        800,
+        1200,
+        1600,
+        2000,
+        2400,
+        2800,
+        3200
+      ]
     }
   ]
 }
