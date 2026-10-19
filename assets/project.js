@@ -126,8 +126,8 @@
 
   function save() {
     try {
-      localStorage.setItem(storeKey, JSON.stringify({ picks: picks, lineup: lineupOrder, packSize: packSize }));
-      if (isAdvisor()) localStorage.setItem(storeKey + ':notes', JSON.stringify({ notes: notes, overall: document.getElementById('overall').value }));
+      localStorage.setItem(storeKey, JSON.stringify({ picks: picks, lineup: lineupOrder, packSize: packSize, files: collageFiles() }));
+      if (isAdvisor()) localStorage.setItem(storeKey + ':notes', JSON.stringify({ notes: notes, overall: document.getElementById('overall').value, files: collageFiles() }));
     } catch (e) {}
   }
   function normalizeSlot(v) {
@@ -226,9 +226,37 @@
       h.classList.remove('is-flash');
     }, 1800);
   }
+  // Drafts are stored by page position; "files" records which collage file sat at
+  // each position so a re-order/delete re-maps picks to the same image instead of
+  // silently shifting them. Drafts saved before this existed use project.legacyOrder.
+  function collageFiles() { return collages.map(function (c) { return c.file; }); }
+  function remapIndex(savedFiles) {
+    var old = Array.isArray(savedFiles) ? savedFiles : (Array.isArray(project.legacyOrder) ? project.legacyOrder : null);
+    if (!old) return null;
+    var cur = collageFiles();
+    return old.map(function (f) { return cur.indexOf(String(f).split('/').pop()); });
+  }
+  function remapArray(arr, map) {
+    if (!map || !Array.isArray(arr)) return arr;
+    var out = collages.map(function () { return undefined; });
+    arr.forEach(function (v, i) { var j = i < map.length ? map[i] : -1; if (j >= 0) out[j] = v; });
+    return out.map(function (v) { return v === undefined ? [] : v; });
+  }
+  function remapLineup(line, map) {
+    if (!map || !Array.isArray(line)) return line;
+    return line.map(function (e) {
+      if (e == null) return null;
+      var j = Number(e.c) < map.length ? map[Number(e.c)] : -1;
+      return j >= 0 ? { c: j, o: e.o } : null;
+    });
+  }
   function load() {
     try {
       var raw = JSON.parse(localStorage.getItem(storeKey));
+      if (raw && !Array.isArray(raw) && Array.isArray(raw.picks)) {
+        var map = remapIndex(raw.files);
+        if (map) { raw.picks = remapArray(raw.picks, map); raw.lineup = remapLineup(raw.lineup, map); var resave = true; }
+      }
       if (Array.isArray(raw) && raw.length === collages.length) {
         // legacy: picks-only array
         picks = raw.map(normalizeSlot);
@@ -243,10 +271,11 @@
     if (isAdvisor()) {
       try {
         var nt = JSON.parse(localStorage.getItem(storeKey + ':notes'));
-        if (nt && Array.isArray(nt.notes)) notes = nt.notes.slice(0, collages.length);
+        if (nt && Array.isArray(nt.notes)) notes = (remapIndex(nt.files) ? remapArray(nt.notes, remapIndex(nt.files)).map(function (v) { return Array.isArray(v) ? '' : v; }) : nt.notes).slice(0, collages.length);
         if (nt && typeof nt.overall === 'string') document.getElementById('overall').value = nt.overall;
       } catch (e) {}
     }
+    if (resave) save();   // re-stamp with current file order
   }
 
   function fmtOpts(arr) {
