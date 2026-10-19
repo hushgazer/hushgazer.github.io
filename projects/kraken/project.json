@@ -156,17 +156,16 @@
     {
       "from": "Adam",
       "clientTag": "1caee1a4",
-      "submittedAt": "2026-10-19T17:42:48.215Z",
-      "overall": "I like them",
+      "submittedAt": "2026-10-19T18:47:46.261Z",
+      "overall": "Picked these in pat because of bright colours, to match brief! Some feel like they're a lil overcomplicated but really sick",
       "picks": [
         {
           "collage": 1,
-          "option": 2,
-          "note": "these fuckin suck"
-        },
-        {
-          "collage": 2,
-          "option": 1
+          "option": [
+            1,
+            2,
+            4
+          ]
         },
         {
           "collage": 3,
@@ -174,19 +173,11 @@
         },
         {
           "collage": 4,
-          "option": 4
-        },
-        {
-          "collage": 5,
           "option": 5
         },
         {
           "collage": 6,
           "option": 6
-        },
-        {
-          "collage": 7,
-          "option": 7
         },
         {
           "collage": 9,
