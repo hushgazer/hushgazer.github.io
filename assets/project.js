@@ -340,10 +340,19 @@
     syncCollageUI(i);
   }
   function clearSlot(idx) {
-    // Clear pack slot only (leave collage pick). Holes stay; no collapse.
+    // X / Delete on a pack slot = unpick that character everywhere (slot + collage).
+    // The slot becomes an empty hole (remake); other slots don't shift.
     if (idx < 0 || idx >= lineupOrder.length) return;
+    var e = lineupOrder[idx];
     lineupOrder[idx] = null;
-    save();
+    if (e && picks[e.c]) {
+      var still = lineupOrder.some(function (s) { return s && s.c === e.c && s.o === e.o; });
+      if (!still) picks[e.c] = picks[e.c].filter(function (o) { return o !== e.o; });
+      save();
+      syncCollageUI(e.c);
+    } else {
+      save();
+    }
     renderSummary();
   }
 
@@ -450,7 +459,7 @@
       card.appendChild(el('span', { class: 'preview-badge sm', 'aria-hidden': 'true' }, '#' + (idx + 1)));
       var cv = cropCanvas(e.c, e.o, 140);
       if (cv) { cv.setAttribute('aria-hidden', 'true'); card.appendChild(cv); }
-      var x = el('button', { type: 'button', class: 'preview-x', 'aria-label': 'Clear pack slot ' + (idx + 1) }, '×');
+      var x = el('button', { type: 'button', class: 'preview-x', 'aria-label': 'Remove pick ' + (idx + 1) }, '×');
       x.addEventListener('pointerdown', function (ev) { ev.stopPropagation(); });
       x.addEventListener('click', (function (slotIdx) {
         return function (ev) {
