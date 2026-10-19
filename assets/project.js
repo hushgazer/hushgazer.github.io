@@ -41,6 +41,10 @@
   // No "clients" array -> fallback: a required "Your name" field.
   var client = null;   // {name, tag} after a successful match
   var mode = 'name';   // 'name' (no clients list) | 'client' (matched) | 'locked' (no/bad link)
+  // Hush signed in + test mode on (admin bar toggle): preview the page AS a client.
+  var ADMIN = !!(window.HushAdmin && window.HushAdmin.active);
+  if (ADMIN && window.HushAdmin.test) TEST = true;
+  var PREVIEW = ADMIN && TEST;   // admin preview: Submit sends nothing
   var storeKey = (TEST ? 'hush-picks-test:' : 'hush-picks:') + slug;
 
   function sha256Hex(text) {
@@ -51,6 +55,14 @@
 
   function resolveClient(p) {
     if (!Array.isArray(p.clients) || !p.clients.length) return Promise.resolve('name');
+    if (PREVIEW) {   // "View as" from the test banner (assets/admin.js)
+      var as = window.HushAdmin.viewAs(peopleOf(p));
+      var pm = p.clients.filter(function (c) { return c && typeof c.keyHash === 'string' && c.name === as; })[0];
+      if (!pm) return Promise.resolve('locked');   // "Hush": admin view (view only)
+      client = { name: String(pm.name), tag: pm.keyHash.toLowerCase().slice(0, 8), role: pm.role === 'decider' || pm.role === 'advisor' ? pm.role : 'client' };
+      storeKey += ':' + client.tag;
+      return Promise.resolve('client');
+    }
     var tok = new URLSearchParams(location.search).get('c') || '';
     // Shared project link (no ?c=): the person picked in the "Who are you?" gate (assets/who.js).
     function bySession() {
@@ -70,6 +82,12 @@
       storeKey += ':' + client.tag;   // two clients on one device never mix
       return 'client';
     }, function () { return 'locked'; });
+  }
+
+  function peopleOf(p) {
+    var lab = { decider: 'Decision maker', advisor: 'Advisor' };
+    return (Array.isArray(p.clients) ? p.clients : []).filter(function (c) { return c && c.name; })
+      .map(function (c) { return { name: String(c.name), role: lab[c.role] || 'Client' }; });
   }
 
   function el(tag, attrs, text) {
@@ -351,6 +369,7 @@
       clientRole: client ? client.role : null,
       opinion: isAdvisor() ? document.getElementById('overall').value.trim() : undefined,
       test: TEST,
+      previewAs: PREVIEW && client ? client.name : undefined,
       submittedAt: new Date().toISOString(),
       picks: collages.map(function (c, i) {
         return {
@@ -371,7 +390,7 @@
     var box = document.getElementById('confirm');
     box.hidden = false; box.textContent = '';
     box.appendChild(el('h3', null, (TEST ? '[TEST] ' : '') + 'Thanks, your picks were sent! \u2728'));
-    box.appendChild(el('p', null, 'Hush Media Creations will take it from here. Your picks:'));
+    box.appendChild(el('p', null, PREVIEW ? 'Test preview: this is what ' + (client ? client.name : 'the client') + ' sees after Submit. Nothing was emailed.' : 'Hush Media Creations will take it from here. Your picks:'));
     var strip = el('ul', { class: 'picks' });
     data.picks.forEach(function (p, i) {
       var li = el('li');
@@ -408,7 +427,7 @@
     document.getElementById('send-error').hidden = true;
     // Honeypot: real people never see or tick this box; bots that fill every field do.
     var bot = !!(f.elements._honey && f.elements._honey.value);
-    if (!FORM_TARGET || bot) { showThanks(data); return; } // nothing is sent
+    if (!FORM_TARGET || bot || PREVIEW) { showThanks(data); return; } // nothing is sent (admin test preview never emails)
     var btn = document.getElementById('submit');
     sending = true; btn.disabled = true; btn.textContent = 'Sending\u2026';
     var body = {
@@ -457,7 +476,14 @@
     renderSummary();
   }
 
+  function clearTest() {
+    resetAll();
+    var f = document.getElementById('picks-form'); if (mode === 'name') f.elements.name.value = '';
+    var sb = document.getElementById('submit'); sb.disabled = true;
+    window.scrollTo(0, 0);
+  }
   function testBanner() {
+    if (ADMIN) { window.HushAdmin.testBanner(peopleOf(project || {}), { onClear: clearTest }); return; }
     document.body.classList.add('test-mode');
     var bar = el('div', { class: 'test-banner', role: 'status', id: 'test-banner' });
     var w = el('div', { class: 'wrap' });
@@ -482,7 +508,6 @@
   // "hidden": true in projects/projects.json (or not listed there) -> clients get a
   // polite "not available" page. Hush (signed in on /admin/, see assets/admin.js)
   // still sees the project, with the admin bar on top.
-  var ADMIN = !!(window.HushAdmin && window.HushAdmin.active);
   function unavailable() {
     var main = document.querySelector('main'); main.textContent = '';
     main.appendChild(el('h1', { id: 'title' }, 'This project isn\u2019t available right now'));
@@ -520,7 +545,7 @@
         app.classList.add('locked');
         document.querySelector('.bar').classList.add('locked-bar');
         document.querySelector('.howto').hidden = true;
-        document.getElementById('gate').hidden = false;
+        document.getElementById('gate').hidden = ADMIN;   // Hush's admin view: no "personal link" notice
         list.querySelectorAll('.opt').forEach(function (b) { b.disabled = true; });
         list.querySelectorAll('.status').forEach(function (s) { s.textContent = 'View only'; });
         if (TEST) testBanner();
@@ -528,8 +553,8 @@
       }
       if (mode === 'client') {
         var badge = document.getElementById('client-badge');
-        badge.textContent = 'Picking as ' + client.name + (client.role === 'advisor' ? ' \u00b7 your opinion goes to the decision maker' : ''); badge.hidden = false;
-        if (window.HushWho && !new URLSearchParams(location.search).get('c')) {
+        badge.textContent = (PREVIEW ? 'Previewing as ' : 'Picking as ') + client.name + (client.role === 'advisor' ? ' \u00b7 your opinion goes to the decision maker' : ''); badge.hidden = false;
+        if (window.HushWho && !PREVIEW && !new URLSearchParams(location.search).get('c')) {
           var sw = el('button', { type: 'button', class: 'who-switch', id: 'who-switch' }, 'Not you?');
           sw.addEventListener('click', function () { window.HushWho.reset(); });
           badge.appendChild(sw);

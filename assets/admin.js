@@ -21,6 +21,21 @@
   } catch (e) { active = false; }
   var me = document.currentScript;
   var ROOT = me ? new URL('../', me.src).href : '/';
+  // ==== TEST MODE (Hush only) ==========================================
+  // Toggle in the admin bar. While on: orange TEST MODE banner + "View as" picker
+  // (Julius / Adam / Hush). Project pages then show that person's interface
+  // (decider / advisor layout, opinions, Final lineup) and Submit sends NOTHING:
+  // it only shows a [TEST] preview of the thanks panel. Stored per tab
+  // (sessionStorage "hush-test", "hush-test-as"); project.js reads the same keys.
+  function sget(k) { try { return sessionStorage.getItem(k) || ''; } catch (e) { return ''; } }
+  function sset(k, v) { try { if (v) sessionStorage.setItem(k, v); else sessionStorage.removeItem(k); } catch (e) {} }
+  function cleanReload() {
+    var q = new URLSearchParams(location.search); q.delete('test');
+    location.replace(location.pathname + (q.toString() ? '?' + q : '') + location.hash);
+  }
+  function testOn() { return sget('hush-test') === '1'; }
+  function setTest(on) { sset('hush-test', on ? '1' : ''); if (!on) sset('hush-test-as', ''); cleanReload(); }
+  var DEFAULT_PEOPLE = [{ name: 'Julius', role: 'Decision maker' }, { name: 'Adam', role: 'Advisor' }];
 
   function el(tag, attrs, text) {
     var e = document.createElement(tag);
@@ -47,7 +62,7 @@
     return { pub: pub, pend: act || null, hidden: act === 'hide' || act === 'delete' || (!act && pub !== 'public') };
   }
   function signOut() {
-    try { ['hush-admin', 'hush-admin-key', 'hush-admin-name'].forEach(function (k) { sessionStorage.removeItem(k); }); } catch (e) {}
+    try { ['hush-admin', 'hush-admin-key', 'hush-admin-name', 'hush-test', 'hush-test-as'].forEach(function (k) { sessionStorage.removeItem(k); }); } catch (e) {}
     location.replace(ROOT);
   }
   function send(action, slug, title) {
@@ -107,6 +122,11 @@
     w.appendChild(el('strong', null, 'ADMIN'));
     w.appendChild(el('span', { class: 'adm-who' }, 'Signed in as ' + who + (LOCAL ? ' \u00b7 local preview' : '')));
     if (extra) w.appendChild(extra);
+    var on = testOn();
+    var tb = el('button', { type: 'button', class: 'adm-btn adm-test' + (on ? ' is-on' : ''), id: 'admin-test', 'aria-pressed': on ? 'true' : 'false',
+      title: on ? 'Turn test mode off' : 'Preview the site as Julius or Adam; nothing is sent' }, on ? 'Test mode: ON' : 'Test mode');
+    tb.addEventListener('click', function () { setTest(!testOn()); });
+    w.appendChild(tb);
     var so = el('button', { type: 'button', class: 'adm-btn', id: 'admin-signout' }, 'Sign out');
     so.addEventListener('click', signOut); w.appendChild(so);
     b.appendChild(w);
@@ -115,8 +135,54 @@
     return b;
   }
 
+  // Orange banner with the "View as" picker. people: [{name, role}] (clients of this project).
+  // opts.onClear: optional "Clear my picks" handler (project pages).
+  function testBanner(people, opts) {
+    opts = opts || {};
+    people = (people && people.length ? people : DEFAULT_PEOPLE).concat([{ name: 'Hush', role: 'Admin view' }]);
+    var cur = viewAs(people);
+    document.body.classList.add('test-mode');
+    var old = document.getElementById('test-banner'); if (old) old.remove();
+    var b = el('div', { class: 'test-banner', role: 'region', id: 'test-banner', 'aria-label': 'Test mode' });
+    var w = el('div', { class: 'wrap' });
+    w.appendChild(el('strong', null, 'TEST MODE'));
+    var seg = el('span', { class: 'tb-viewas', role: 'group', 'aria-label': 'View as' });
+    seg.appendChild(el('span', { class: 'tb-lab' }, 'View as:'));
+    people.forEach(function (p) {
+      var on = p.name === cur;
+      var x = el('button', { type: 'button', class: 'tb-who' + (on ? ' is-on' : ''), 'data-as': p.name, 'aria-pressed': on ? 'true' : 'false' });
+      x.appendChild(document.createTextNode(p.name));
+      if (p.role) x.appendChild(el('small', null, p.role));
+      x.addEventListener('click', function () { if (p.name !== viewAs(people)) { sset('hush-test-as', p.name); cleanReload(); } });
+      seg.appendChild(x);
+    });
+    w.appendChild(seg);
+    w.appendChild(el('span', { class: 'tb-note' }, 'Preview only \u00b7 Submit sends nothing'));
+    var acts = el('span', { class: 'tb-actions' });
+    if (opts.onClear) {
+      var clr = el('button', { type: 'button', id: 'test-clear' }, 'Clear my picks');
+      clr.addEventListener('click', opts.onClear); acts.appendChild(clr);
+    }
+    var ex = el('button', { type: 'button', id: 'test-exit', class: 'tb-exit' }, 'Exit test mode');
+    ex.addEventListener('click', function () { setTest(false); });
+    acts.appendChild(ex);
+    w.appendChild(acts); b.appendChild(w);
+    var ab = document.getElementById('admin-bar');
+    if (ab && ab.nextSibling) document.body.insertBefore(b, ab.nextSibling); else document.body.insertBefore(b, document.body.firstChild);
+    return b;
+  }
+  // who Hush is previewing as (falls back to the first client)
+  function viewAs(people) {
+    var v = sget('hush-test-as'), names = (people || DEFAULT_PEOPLE).map(function (p) { return p.name; });
+    if (v === 'Hush' || names.indexOf(v) >= 0) return v;
+    return names[0] || 'Hush';
+  }
+
   window.HushAdmin = {
     active: active,
+    test: active && testOn(),
+    viewAs: function (people) { return viewAs(people); },
+    testBanner: testBanner,
     // is this project hidden for clients (published state)? used by project.js
     renderHome: function (ul, projects) {
       bar(el('a', { href: ROOT, class: 'adm-link' }, 'All projects'));
@@ -137,6 +203,7 @@
         Object.keys(pending()).forEach(function (s) { if (known.indexOf(s) < 0) setPending(s, null); });
       }
       draw();
+      if (testOn()) testBanner(null);
     },
     projectBar: function (slug, title, entry) {
       var msg = el('span', { class: 'adm-msg', id: 'admin-msg', 'aria-live': 'polite' });

@@ -196,3 +196,17 @@ background:rgba(255,255,255,.035);border:1px solid var(--line);border-radius:14p
 @keyframes whoShake{20%,60%{transform:translateX(-7px)}40%,80%{transform:translateX(7px)}}
 .who-switch{margin-left:8px;font:inherit;font-size:.85em;color:var(--gold);background:none;border:0;padding:0;text-decoration:underline;cursor:pointer}
 @media (prefers-reduced-motion:reduce){.who-overlay,.who-card,.who-choice,.who-arrow{transition:none}.who-card.shake{animation:none}}
+
+/* admin test mode: toggle in the admin bar + "View as" picker in the orange banner */
+.adm-test.is-on{background:#ff8c1a;border-color:#ff8c1a;color:#1a0d00}
+.test-banner .tb-viewas{display:inline-flex;flex-wrap:wrap;align-items:center;gap:6px}
+.test-banner .tb-lab{font-weight:700}
+.test-banner button.tb-who{display:inline-flex;align-items:baseline;gap:6px;text-decoration:none;border:2px solid #1a0d00;border-radius:999px;padding:3px 12px;background:transparent}
+.test-banner button.tb-who small{font-weight:600;opacity:.75;font-size:.75rem}
+.test-banner button.tb-who.is-on{background:#1a0d00;color:#ff8c1a}
+.test-banner button.tb-who:focus-visible,.test-banner .tb-exit:focus-visible{outline:3px solid #fff;outline-offset:2px}
+.test-banner .tb-note{font-weight:600;font-size:.8rem;opacity:.85}
+.test-banner button.tb-exit{text-decoration:none;background:#1a0d00;color:#ff8c1a;border-radius:999px;padding:4px 14px}
+.admin-bar + .test-banner{top:44px}
+/* keep the "Not you? Switch" pill clear of the bottom picks bar (Review & submit) */
+body:has(.bar) .who-pill{bottom:92px}
