@@ -1,6 +1,6 @@
 {
   "title": "Kraken",
-  "description": "Tap the characters you like in each collage \u2014 as many as you want. Tap again to unpick.",
+  "description": "Tap the characters you like in each collage — as many as you want. Tap again to unpick.",
   "packSize": 8,
   "collages": [
     {
@@ -32,22 +32,6 @@
         1666,
         2160
       ]
-    },
-    {
-      "file": "collage-3.png",
-      "options": 7,
-      "label": "Collage 3",
-      "columns": [
-        0,
-        147,
-        340,
-        661,
-        941,
-        1274,
-        1640,
-        2172
-      ],
-      "hidden": true
     },
     {
       "file": "collage-4.png",
