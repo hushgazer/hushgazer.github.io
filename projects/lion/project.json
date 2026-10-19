@@ -181,6 +181,111 @@
         1654,
         2172
       ]
+    },
+    {
+      "file": "collage-13.png",
+      "options": 7,
+      "label": "Collage 13",
+      "columns": [
+        0,
+        190,
+        440,
+        781,
+        1138,
+        1445,
+        1763,
+        2172
+      ]
+    },
+    {
+      "file": "collage-14.png",
+      "options": 7,
+      "label": "Collage 14",
+      "columns": [
+        0,
+        196,
+        434,
+        750,
+        1044,
+        1359,
+        1687,
+        2172
+      ]
+    },
+    {
+      "file": "collage-15.png",
+      "options": 7,
+      "label": "Collage 15",
+      "columns": [
+        0,
+        176,
+        425,
+        749,
+        1069,
+        1351,
+        1712,
+        2172
+      ]
+    },
+    {
+      "file": "collage-16.png",
+      "options": 7,
+      "label": "Collage 16",
+      "columns": [
+        0,
+        156,
+        407,
+        702,
+        972,
+        1325,
+        1677,
+        2172
+      ]
+    },
+    {
+      "file": "collage-17.png",
+      "options": 7,
+      "label": "Collage 17",
+      "columns": [
+        0,
+        192,
+        451,
+        768,
+        1091,
+        1484,
+        1773,
+        2172
+      ]
+    },
+    {
+      "file": "collage-18.png",
+      "options": 7,
+      "label": "Collage 18",
+      "columns": [
+        0,
+        176,
+        403,
+        658,
+        1007,
+        1346,
+        1711,
+        2172
+      ]
+    },
+    {
+      "file": "collage-19.png",
+      "options": 7,
+      "label": "Collage 19",
+      "columns": [
+        0,
+        166,
+        419,
+        643,
+        979,
+        1340,
+        1739,
+        2172
+      ]
     }
   ],
   "imageBot": "12d51f4d-848b-4f40-b43d-204baade127c",
