@@ -136,5 +136,42 @@
       "keyHash": "595e1c1e82f0782e4107dc7dd7f006f200db6cbb5fbf429050140fa286316bb9",
       "role": "advisor"
     }
+  ],
+  "opinions": [
+    {
+      "from": "Adam",
+      "clientTag": "595e1c1e",
+      "submittedAt": "2026-10-19T18:53:38.113Z",
+      "overall": "Fuckin SICK",
+      "picks": [
+        {
+          "collage": 1,
+          "option": 4
+        },
+        {
+          "collage": 2,
+          "option": 2
+        },
+        {
+          "collage": 4,
+          "option": 1
+        },
+        {
+          "collage": 5,
+          "option": 5
+        },
+        {
+          "collage": 6,
+          "option": [
+            1,
+            4
+          ]
+        },
+        {
+          "collage": 7,
+          "option": 6
+        }
+      ]
+    }
   ]
 }
