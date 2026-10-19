@@ -4,6 +4,7 @@
 
 Project-level (home page):
   python3 tools/admin_action.py hide|unhide <slug>
+  python3 tools/admin_action.py finish|unfinish <slug>
   python3 tools/admin_action.py delete <slug> [--remove-files]
 
 Per-collage (project page; preferred):
@@ -31,7 +32,7 @@ PJ = os.path.join(R, 'projects', 'projects.json')
 PRIV = os.path.join(R, 'tools', 'private', 'admin.json')
 DONE = os.path.join(R, 'tools', 'private', 'admin-processed.json')
 
-PROJECT_ACTIONS = ('hide', 'unhide', 'delete')
+PROJECT_ACTIONS = ('hide', 'unhide', 'delete', 'finish', 'unfinish')
 COLLAGE_ACTIONS = ('hide-collage', 'show-collage', 'delete-collage')
 ALL_ACTIONS = PROJECT_ACTIONS + COLLAGE_ACTIONS
 FILE_RE = re.compile(r'^[A-Za-z0-9._-]+\.(png|jpe?g|webp)$', re.I)
@@ -115,6 +116,14 @@ def apply_project(action, slug, remove_files):
         else:
             entry.pop('hidden', None)
         print(f'{slug}: {"hidden" if action == "hide" else "public"}')
+    elif action in ('finish', 'unfinish'):
+        if not entry:
+            sys.exit(f'{slug}: not in projects.json')
+        if action == 'finish':
+            entry['finished'] = True
+        else:
+            entry.pop('finished', None)
+        print(f'{slug}: {"finished" if action == "finish" else "ongoing"}')
     else:
         d['projects'] = [x for x in ps if x.get('slug') != slug]
         print(f'{slug}: removed from projects.json' if entry else f'{slug}: was not listed')

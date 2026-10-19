@@ -57,9 +57,14 @@
   // published state + this tab's pending request -> what Hush should see
   function state(entry, slug) {
     var pub = !entry ? 'gone' : entry.hidden ? 'hidden' : 'public', act = pending()[slug];
+    var finished = !!(entry && entry.finished);
     if (act === 'delete' && pub === 'gone') { setPending(slug, null); act = null; }
     if ((act === 'hide' && pub === 'hidden') || (act === 'unhide' && pub === 'public')) { setPending(slug, null); act = null; }
-    return { pub: pub, pend: act || null, hidden: act === 'hide' || act === 'delete' || (!act && pub !== 'public') };
+    if (act === 'finish' && finished) { setPending(slug, null); act = null; }
+    if (act === 'unfinish' && !finished) { setPending(slug, null); act = null; }
+    if (act === 'finish') finished = true;
+    if (act === 'unfinish') finished = false;
+    return { pub: pub, pend: act || null, hidden: act === 'hide' || act === 'delete' || (!act && pub !== 'public'), finished: finished };
   }
   function signOut() {
     if (window.HushWho && window.HushWho.signOut) { window.HushWho.signOut(); return; }
@@ -118,32 +123,41 @@
     function act(action) {
       if (action === 'hide' && !window.confirm('Hide \u201c' + title + '\u201d?\n\nClients will see it as not available until you Unhide. Are you sure?')) return;
       if (action === 'delete' && !window.confirm('Delete \u201c' + title + '\u201d permanently?\n\nClients lose access right away and the project is removed from the site at the next publish. This can\u2019t be undone from here.')) return;
-      // Optimistic: flip this tab instantly, then email the signed request in the background.
+      if (action === 'finish' && !window.confirm('Mark \u201c' + title + '\u201d as Finished?\n\nIt moves to the Finished section on the home page.')) return;
+      if (action === 'unfinish' && !window.confirm('Move \u201c' + title + '\u201d back to Ongoing?')) return;
       setPending(slug, action);
+      if (action === 'finish' && entry) entry.finished = true;
+      if (action === 'unfinish' && entry) delete entry.finished;
       onDone();
-      setMsg(msg, action === 'delete' ? ('Removing \u201c' + title + '\u201d\u2026 publishing')
+      var busy = action === 'delete' ? ('Removing \u201c' + title + '\u201d\u2026 publishing')
         : action === 'hide' ? ('Hiding \u201c' + title + '\u201d\u2026 publishing')
-        : ('Showing \u201c' + title + '\u201d\u2026 publishing'), false);
+        : action === 'finish' ? ('Marking \u201c' + title + '\u201d finished\u2026')
+        : action === 'unfinish' ? ('Moving \u201c' + title + '\u201d to Ongoing\u2026')
+        : ('Showing \u201c' + title + '\u201d\u2026 publishing');
+      setMsg(msg, busy, false);
       send(action, slug, title).then(function (r) {
         if (r.local) {
           setMsg(msg, 'Local preview: UI updated here. To publish run: ' + r.cmd, false);
           return;
         }
-        setMsg(msg, action === 'delete' ? ('Published for \u201c' + title + '\u201d. Live site updates after GitHub Pages (usually ~1–2 min).')
-          : action === 'hide' ? ('Published: hide \u201c' + title + '\u201d. Live site updates after GitHub Pages (usually ~1–2 min).')
-          : ('Published: show \u201c' + title + '\u201d. Live site updates after publish. If it stays hidden, tell me.'), false);
+        setMsg(msg, 'Published. Live site updates after GitHub Pages (usually ~1\u20132 min).', false);
       }, function (e) {
         setPending(slug, null);
+        if (action === 'finish' && entry) delete entry.finished;
+        if (action === 'unfinish' && entry) entry.finished = true;
         onDone();
-        setMsg(msg, 'NOT PUBLISHED — could not send (' + (e && e.message || 'network error') + '). Reverted. Try again.', true);
+        setMsg(msg, 'NOT PUBLISHED \u2014 could not send (' + (e && e.message || 'network error') + '). Reverted. Try again.', true);
       });
     }
     var hidden = st.hidden;
+    if (st.finished) box.appendChild(el('span', { class: 'adm-chip adm-finished' }, 'Finished'));
+    var fb = el('button', { type: 'button', class: 'adm-btn', 'data-act': st.finished ? 'unfinish' : 'finish' }, st.finished ? 'Move to ongoing' : 'Mark finished');
+    fb.addEventListener('click', function () { act(st.finished ? 'unfinish' : 'finish'); });
     var hb = el('button', { type: 'button', class: 'adm-btn', 'data-act': hidden ? 'unhide' : 'hide' }, hidden ? 'Unhide' : 'Hide');
     hb.addEventListener('click', function () { act(hidden ? 'unhide' : 'hide'); });
     var db = el('button', { type: 'button', class: 'adm-btn adm-danger', 'data-act': 'delete' }, 'Delete');
     db.addEventListener('click', function () { act('delete'); });
-    box.appendChild(hb); box.appendChild(db);
+    box.appendChild(fb); box.appendChild(hb); box.appendChild(db);
     return box;
   }
   function bar(extra) {
@@ -214,15 +228,20 @@
     viewAs: function (people) { return viewAs(people); },
     testBanner: testBanner,
     // is this project hidden for clients (published state)? used by project.js
-    renderHome: function (ul, projects) {
+    renderHome: function (ongoingUl, finishedUl, projects) {
       bar(el('a', { href: ROOT, class: 'adm-link' }, 'All projects'));
       var msg = el('p', { class: 'adm-msg', id: 'admin-msg', 'aria-live': 'polite' });
-      ul.parentNode.insertBefore(msg, ul);
-      function draw() {
+      var host = document.getElementById('home-projects') || ongoingUl.parentNode;
+      if (host && host.parentNode) host.parentNode.insertBefore(msg, host);
+      function fill(ul, list) {
         ul.textContent = '';
         ul.classList.add('admin-list');
-        var known = projects.map(function (p) { return p.slug; });
-        projects.forEach(function (p) {
+        if (!list.length) {
+          var empty = el('li', { class: 'project-empty' }, 'None yet.');
+          ul.appendChild(empty);
+          return;
+        }
+        list.forEach(function (p) {
           var li = el('li', { 'data-slug': p.slug }), a = el('a', { href: ROOT + p.slug + '/' }, p.title);
           var st = state(p, p.slug);
           if (st.hidden) li.classList.add('adm-is-hidden');
@@ -230,6 +249,16 @@
           li.appendChild(a); li.appendChild(controls(p.slug, p.title, p, msg, draw));
           ul.appendChild(li);
         });
+      }
+      function draw() {
+        var known = projects.map(function (p) { return p.slug; });
+        var o = [], f = [];
+        projects.forEach(function (p) {
+          var st = state(p, p.slug);
+          (st.finished ? f : o).push(p);
+        });
+        fill(ongoingUl, o);
+        fill(finishedUl, f);
         Object.keys(pending()).forEach(function (s) { if (known.indexOf(s) < 0) setPending(s, null); });
       }
       draw();
