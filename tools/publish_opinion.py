@@ -37,11 +37,12 @@ def main():
         c = int(p['collage'])
         if not (1 <= c <= n): sys.exit(f'bad pick {p}')
         raw = p.get('selected', p.get('option'))
-        if raw is None: sys.exit(f'bad pick {p}')
+        if raw is None: raw = []
         opts = [int(x) for x in (raw if isinstance(raw, (list, tuple)) else [raw])]
         opts = sorted({o for o in opts if o >= 1})
         maxo = int(cfg['collages'][c - 1]['options'])
-        if not opts or any(o > maxo for o in opts): sys.exit(f'bad pick {p}')
+        if any(o > maxo for o in opts): sys.exit(f'bad pick {p}')
+        if not opts and not p.get('note'): continue   # advisor left this slot empty: shown as "no pick"
         e = {'collage': c, 'option': opts[0] if len(opts) == 1 else opts}
         if p.get('note'): e['note'] = str(p['note'])[:500]
         picks.append(e)
