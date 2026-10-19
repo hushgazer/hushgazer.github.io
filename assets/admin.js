@@ -64,6 +64,7 @@
     return { pub: pub, pend: act || null, hidden: act === 'hide' || act === 'delete' || (!act && pub !== 'public') };
   }
   function signOut() {
+    if (window.HushWho && window.HushWho.signOut) { window.HushWho.signOut(); return; }
     try { ['hush-admin', 'hush-admin-key', 'hush-admin-name', 'hush-test', 'hush-test-as'].forEach(function (k) { sessionStorage.removeItem(k); }); } catch (e) {}
     location.replace(ROOT);
   }

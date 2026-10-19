@@ -49,9 +49,17 @@
   // picked a name before passwords existed are asked again). 'Guest' = project without a clients list.
   var stored = get('hush-who');
   if (stored && !(stored === 'Guest' || (hasPw(stored) && get('hush-who-auth') === CLIENT_LOGIN_HASH[stored]))) { stored = ''; del('hush-who'); del('hush-who-auth'); }
+  // Sign out / switch person: forget everything this tab knows (who, admin, test mode) and
+  // reopen the "Who are you?" popup on this same page (?who=1; a personal ?c= link is kept).
+  function signOut() {
+    KEYS.concat(['hush-test', 'hush-test-as']).forEach(del);
+    var q = new URLSearchParams(location.search); q.delete('test'); q.delete('who'); q.set('who', '1');
+    location.replace(location.pathname + '?' + q.toString());
+  }
   window.HushWho = {
     name: admin ? NAME : stored,
-    reset: function () { KEYS.forEach(del); location.reload(); }
+    signOut: signOut,
+    reset: signOut
   };
   function onReady(fn) { if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fn); else fn(); }
   // The gate is static markup in every page and <html class="who-lock"> is set in the HTML itself, so the page
@@ -60,18 +68,34 @@
     html.classList.remove('who-lock');
     onReady(function () { var o = document.getElementById('who-overlay'); if (o) o.remove(); switchPill(); });
   }
+  // Signed-in strip in the site header (every page): avatar + name, "Not you? Switch", "Sign out".
   function switchPill() {
-    if (document.getElementById('who-pill') || !window.HushWho.name) return;
-    var b = document.createElement('button');
-    b.type = 'button'; b.id = 'who-pill'; b.className = 'who-pill';
-    b.setAttribute('aria-label', 'Signed in as ' + window.HushWho.name + '. Switch person');
-    var a = document.createElement('span'); a.className = 'who-pill-av'; a.textContent = window.HushWho.name.charAt(0).toUpperCase();
-    var t = document.createElement('span'); t.textContent = window.HushWho.name;
-    var x = document.createElement('span'); x.className = 'who-pill-sw'; x.textContent = 'Not you? Switch';
-    b.appendChild(a); b.appendChild(t); b.appendChild(x);
-    b.addEventListener('click', function () { window.HushWho.reset(); });
-    document.body.appendChild(b);
+    var name = window.HushWho.name;
+    if (!name || document.getElementById('who-acct')) return;
+    var box = document.createElement('div');
+    box.id = 'who-acct'; box.className = 'who-acct';
+    box.setAttribute('role', 'group'); box.setAttribute('aria-label', 'Signed in as ' + name);
+    var who = document.createElement('span'); who.className = 'who-acct-who'; who.id = 'who-pill';
+    var av = document.createElement('span'); av.className = 'who-pill-av'; av.setAttribute('aria-hidden', 'true'); av.textContent = name.charAt(0).toUpperCase();
+    var nm = document.createElement('span'); nm.className = 'who-acct-name'; nm.textContent = name;
+    who.appendChild(av); who.appendChild(nm);
+    var sw = document.createElement('button'); sw.type = 'button'; sw.id = 'who-switch-top'; sw.className = 'who-acct-sw'; sw.textContent = 'Not you? Switch';
+    sw.addEventListener('click', signOut);
+    var so = document.createElement('button'); so.type = 'button'; so.id = 'who-signout'; so.className = 'who-signout'; so.textContent = 'Sign out';
+    so.addEventListener('click', signOut);
+    box.appendChild(who); box.appendChild(sw); box.appendChild(so);
+    var hdr = document.querySelector('.site-header .wrap');
+    if (hdr) hdr.appendChild(box); else { box.classList.add('is-float'); document.body.appendChild(box); }
   }
+  // Logo / brand: signed out -> open the "Who are you?" popup; signed in -> home as usual.
+  document.addEventListener('click', function (ev) {
+    var a = ev.target.closest && ev.target.closest('.site-header .brand');
+    if (!a || window.HushWho.name) return;
+    ev.preventDefault();
+    location.href = ROOT + '?who=1';
+  }, true);
+  // Pages restored from the back/forward cache keep their old DOM: re-check the session.
+  window.addEventListener('pageshow', function (ev) { if (ev.persisted) location.reload(); });
   if (admin) { release(); return; }        // Hush already signed in: no gate anywhere
   html.classList.add('who-lock');           // (already in the HTML; belt and braces)
   if (PAGE === 'home' && (stored === 'Julius' || stored === 'Adam')) { release(); return; }
