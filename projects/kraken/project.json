@@ -161,6 +161,7 @@
       "picks": [
         {
           "collage": 1,
+          "file": "collage-1.png",
           "option": [
             1,
             2,
@@ -169,20 +170,63 @@
         },
         {
           "collage": 3,
+          "file": "collage-4.png",
           "option": 3
         },
         {
           "collage": 4,
+          "file": "collage-5.png",
           "option": 5
         },
         {
           "collage": 6,
+          "file": "collage-7.png",
           "option": 6
         },
         {
           "collage": 9,
+          "file": "collage-10.png",
           "option": 7
         }
+      ],
+      "packSize": 8,
+      "lineup": [
+        {
+          "collage": 1,
+          "file": "collage-1.png",
+          "option": 1
+        },
+        {
+          "collage": 1,
+          "file": "collage-1.png",
+          "option": 2
+        },
+        {
+          "collage": 3,
+          "file": "collage-4.png",
+          "option": 3
+        },
+        {
+          "collage": 1,
+          "file": "collage-1.png",
+          "option": 4
+        },
+        {
+          "collage": 4,
+          "file": "collage-5.png",
+          "option": 5
+        },
+        {
+          "collage": 6,
+          "file": "collage-7.png",
+          "option": 6
+        },
+        {
+          "collage": 9,
+          "file": "collage-10.png",
+          "option": 7
+        },
+        null
       ]
     }
   ]

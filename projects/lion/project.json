@@ -146,22 +146,27 @@
       "picks": [
         {
           "collage": 1,
+          "file": "collage-1.png",
           "option": 4
         },
         {
           "collage": 2,
+          "file": "collage-2.png",
           "option": 2
         },
         {
           "collage": 4,
+          "file": "collage-5.png",
           "option": 1
         },
         {
           "collage": 5,
+          "file": "collage-6.png",
           "option": 5
         },
         {
           "collage": 6,
+          "file": "collage-7.png",
           "option": [
             1,
             4
@@ -169,8 +174,48 @@
         },
         {
           "collage": 7,
+          "file": "collage-8.png",
           "option": 6
         }
+      ],
+      "packSize": 8,
+      "lineup": [
+        {
+          "collage": 6,
+          "file": "collage-7.png",
+          "option": 1
+        },
+        {
+          "collage": 4,
+          "file": "collage-5.png",
+          "option": 1
+        },
+        {
+          "collage": 6,
+          "file": "collage-7.png",
+          "option": 4
+        },
+        {
+          "collage": 2,
+          "file": "collage-2.png",
+          "option": 2
+        },
+        {
+          "collage": 1,
+          "file": "collage-1.png",
+          "option": 4
+        },
+        {
+          "collage": 5,
+          "file": "collage-6.png",
+          "option": 5
+        },
+        {
+          "collage": 7,
+          "file": "collage-8.png",
+          "option": 6
+        },
+        null
       ]
     }
   ]

@@ -369,8 +369,27 @@
     if (mode !== 'client' || client.role !== 'decider' || !Array.isArray(project.opinions)) return [];
     return project.opinions.filter(function (o) { return o && Array.isArray(o.picks) && o.from; });
   }
+  // Collage heading shown on the page. Auto labels ("Collage 7") follow the
+  // collage's CURRENT position, so they stay right after a collage is deleted
+  // (files keep their old numbers; emails/opinions always count by position).
+  function collageLabel(c, i) {
+    var l = c && c.label;
+    return (!l || /^collage\s*\d+$/i.test(String(l).trim())) ? 'Collage ' + (i + 1) : l;
+  }
+  // Opinion entries carry "file" (stable even if collages are deleted/re-ordered)
+  // and "collage" (1-based position when submitted, fallback for old data).
+  function opinionIndex(e) {
+    if (!e) return -1;
+    if (e.file) {
+      var f = String(e.file).split('/').pop();
+      for (var i = 0; i < collages.length; i++) if (collages[i].file === f) return i;
+      return -1;
+    }
+    var n = Number(e.collage) - 1;
+    return n >= 0 && n < collages.length ? n : -1;
+  }
   function opinionPick(o, i) {
-    return o.picks.filter(function (p) { return p && p.collage === i + 1; })[0] || null;
+    return o.picks.filter(function (p) { return p && opinionIndex(p) === i; })[0] || null;
   }
   function opinionOpts(op) {
     if (!op) return [];
@@ -378,6 +397,24 @@
     if (Array.isArray(o)) return o.map(Number).filter(function (n) { return n >= 1; });
     if (typeof o === 'number' && o >= 1) return [o];
     return [];
+  }
+  // Advisor's pack in their exact slot order: [{c, o} | null] x packSize.
+  // Older opinions without "lineup" fall back to picks in collage order.
+  function opinionLineup(o) {
+    var size = Number(o.packSize) || packSize, out = [];
+    if (Array.isArray(o.lineup)) {
+      o.lineup.forEach(function (e) {
+        var i = opinionIndex(e), opt = e ? Number(e.option) : 0;
+        out.push(i >= 0 && opt >= 1 && opt <= collages[i].options ? { c: i, o: opt } : null);
+      });
+    } else {
+      collages.forEach(function (c, i) {
+        opinionOpts(opinionPick(o, i)).forEach(function (opt) { out.push({ c: i, o: opt }); });
+      });
+    }
+    size = Math.max(size, out.length);
+    while (out.length < size) out.push(null);
+    return out;
   }
   // ==== FINAL LINEUP =======================================================
   // The picked characters side by side, cut from the full-quality collages at
@@ -686,7 +723,105 @@
     }, 'image/png');
   }
 
+  function flashCollageOpt(i, opt) {
+    var sec = document.getElementById('collage-' + (i + 1)); if (!sec) return;
+    sec.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    var btn = sec.querySelector('.opt[data-opt="' + opt + '"]'); if (!btn) return;
+    btn.classList.remove('op-flash'); void btn.offsetWidth; btn.classList.add('op-flash');
+    setTimeout(function () { btn.classList.remove('op-flash'); }, 1800);
+  }
+  // One advisor opinion as a pack row (same look as the sticky bar slots).
+  function opinionBody(o, sec, own) {
+    var line = opinionLineup(o), filled = line.filter(Boolean).length;
+    if (o.overall) sec.appendChild(el('blockquote', { class: 'op-quote' }, '\u201c' + o.overall + '\u201d'));
+    sec.appendChild(el('p', { class: 'op-hint' }, (own ? 'Your pack, in your order' : 'Pack in the order ' + o.from + ' set it') + ' \u00b7 ' +
+      filled + ' of ' + line.length + ' slots filled' + (filled < line.length ? ' (empty = remake)' : '') + ' \u00b7 tap one to jump to it.'));
+    var row = el('div', { class: 'op-pack', role: 'list', 'aria-label': (own ? 'Your' : o.from + '\u2019s') + ' pack, in order' });
+    var inPack = {};
+    line.forEach(function (e, idx) {
+      if (!e) {
+        var empty = el('div', { class: 'bar-slot bar-slot-empty op-slot', role: 'listitem', 'aria-label': 'Slot ' + (idx + 1) + ': empty, remake' });
+        empty.appendChild(el('span', { class: 'preview-badge sm', 'aria-hidden': 'true' }, '#' + (idx + 1)));
+        empty.appendChild(el('span', { class: 'bar-slot-new', 'aria-hidden': 'true' }, 'New'));
+        empty.appendChild(el('span', { class: 'bar-slot-hint', 'aria-hidden': 'true' }, 'Remake'));
+        row.appendChild(empty); return;
+      }
+      inPack[e.c + ':' + e.o] = true;
+      var lab = collageLabel(collages[e.c], e.c);
+      var a = el('a', { href: '#collage-' + (e.c + 1), class: 'bar-card preview-card bar-slot op-slot', role: 'listitem',
+        'data-c': String(e.c), 'data-o': String(e.o), 'aria-label': 'Slot ' + (idx + 1) + ': ' + lab + ', option ' + e.o });
+      a.appendChild(el('span', { class: 'preview-badge sm', 'aria-hidden': 'true' }, '#' + (idx + 1)));
+      var cv = cropCanvas(e.c, e.o, 140); cv.setAttribute('aria-hidden', 'true'); a.appendChild(cv);
+      var cap = el('span', { class: 'op-cap', 'aria-hidden': 'true' });
+      cap.appendChild(el('b', null, lab)); cap.appendChild(el('span', null, 'option ' + e.o));
+      a.appendChild(cap);
+      a.addEventListener('click', (function (c, opt) { return function (ev) { ev.preventDefault(); flashCollageOpt(c, opt); }; })(e.c, e.o));
+      row.appendChild(a);
+    });
+    sec.appendChild(row);
+    // Picks tagged on collages that didn't make the pack, and per-collage notes.
+    var extra = [], noted = [];
+    collages.forEach(function (c, i) {
+      var p = opinionPick(o, i);
+      opinionOpts(p).forEach(function (opt) { if (!inPack[i + ':' + opt]) extra.push(collageLabel(c, i) + ' \u00b7 option ' + opt); });
+      if (p && p.note) noted.push({ l: collageLabel(c, i), n: p.note });
+    });
+    if (extra.length) sec.appendChild(el('p', { class: 'op-extra' }, 'Also liked (not in the pack): ' + extra.join(', ')));
+    if (noted.length) {
+      var ul = el('ul', { class: 'op-notes' });
+      noted.forEach(function (x) { var li = el('li'); li.appendChild(el('b', null, x.l + ': ')); li.appendChild(document.createTextNode(x.n)); ul.appendChild(li); });
+      sec.appendChild(ul);
+    }
+  }
+  function whenText(iso) {
+    var d = new Date(iso); if (!iso || isNaN(d)) return '';
+    try { return d.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }); }
+    catch (e) { return d.toLocaleString(); }
+  }
+  // Advisor's own last submit: published opinion (project.json) is the source of
+  // truth; a just-sent local copy shows until the published one catches up.
+  var sentKey = storeKey + ':sent', myOpOpen = true;
+  function rememberSent(data) {
+    if (!isAdvisor()) return;
+    try {
+      localStorage.setItem(sentKey, JSON.stringify({ from: client.name, clientTag: client.tag, submittedAt: data.submittedAt,
+        overall: data.opinion || '', packSize: data.packSize, lineup: data.lineup, preview: !!PREVIEW,
+        picks: data.picks.map(function (p) { return { collage: p.collage, file: p.file, option: p.selected, note: p.note }; }) }));
+    } catch (e) {}
+    myOpOpen = true; renderOpinions();
+  }
+  function myOpinion() {
+    var pub = (Array.isArray(project.opinions) ? project.opinions : []).filter(function (o) {
+      return o && Array.isArray(o.picks) && ((o.clientTag && o.clientTag === client.tag) || (!o.clientTag && o.from === client.name));
+    })[0] || null, local = null;
+    try { local = JSON.parse(localStorage.getItem(sentKey) || 'null'); } catch (e) {}
+    if (local && pub && Date.parse(pub.submittedAt) >= Date.parse(local.submittedAt)) {
+      try { localStorage.removeItem(sentKey); } catch (e) {} local = null;
+    }
+    if (local && local.picks) return { o: local, pending: true, preview: local.preview };
+    return pub ? { o: pub, pending: false } : null;
+  }
+  function renderMyOpinion() {
+    var old = document.getElementById('my-opinion'), mine = myOpinion();
+    if (!mine) { if (old) old.remove(); return; }
+    var det = el('details', { id: 'my-opinion', class: 'opinion op-mine' });
+    if (myOpOpen) det.open = true;
+    det.addEventListener('toggle', function () { myOpOpen = det.open; });
+    var sum = el('summary', { class: 'op-head' });
+    sum.appendChild(el('h2', null, 'Your submitted lineup'));
+    var st = mine.pending ? (mine.preview ? 'Test submit \u00b7 not sent' : 'Updating\u2026 just sent ' + whenText(mine.o.submittedAt))
+      : 'Submitted ' + whenText(mine.o.submittedAt);
+    sum.appendChild(el('span', { class: 'op-meta' + (mine.pending ? ' op-pending' : '') }, st));
+    det.appendChild(sum);
+    var body = el('div', { class: 'op-body' });
+    opinionBody(mine.o, body, true);
+    body.appendChild(el('p', { class: 'op-hint' }, 'Want changes? Pick again below and resubmit \u2014 your new lineup replaces this one.'));
+    det.appendChild(body);
+    var list = document.getElementById('collages');
+    if (old) old.replaceWith(det); else list.parentNode.insertBefore(det, list);
+  }
   function renderOpinions() {
+    if (isAdvisor()) { renderMyOpinion(); return; }
     var ops = opinionsFor(); if (!ops.length) return;
     var holder = document.getElementById('opinions');
     if (!holder) {
@@ -696,27 +831,17 @@
     holder.textContent = '';
     ops.forEach(function (o, k) {
       var sec = el('section', { class: 'opinion', 'aria-labelledby': 'op-h' + k });
-      sec.appendChild(el('h2', { id: 'op-h' + k }, o.from + '\u2019s opinion'));
-      if (o.overall) sec.appendChild(el('p', { class: 'op-overall' }, o.overall));
-      var ul = el('ul', { class: 'op-list' });
-      collages.forEach(function (c, i) {
-        var p = opinionPick(o, i), opts = opinionOpts(p), label = c.label || ('Collage ' + (i + 1));
-        var li = el('li');
-        var a = el('a', { href: '#collage-' + (i + 1), class: 'op-thumb' });
-        if (opts.length) opts.forEach(function (opt) { if (opt >= 1 && opt <= c.options) a.appendChild(cropCanvas(i, opt, 110)); });
-        else a.appendChild(el('span', { class: 'ph', 'aria-hidden': 'true' }, '–'));
-        li.appendChild(a);
-        var t = el('div', { class: 'op-text' });
-        t.appendChild(el('strong', null, label + ': ' + (opts.length ? ('option' + (opts.length > 1 ? 's ' : ' ') + opts.join(', ')) : 'no pick')));
-        if (p && p.note) t.appendChild(el('p', null, p.note));
-        li.appendChild(t); ul.appendChild(li);
-      });
-      sec.appendChild(ul); holder.appendChild(sec);
+      var head = el('div', { class: 'op-head' });
+      head.appendChild(el('h2', { id: 'op-h' + k }, o.from + '\u2019s opinion'));
+      if (o.submittedAt) head.appendChild(el('span', { class: 'op-meta' }, 'Sent ' + whenText(o.submittedAt)));
+      sec.appendChild(head);
+      opinionBody(o, sec, false);
+      holder.appendChild(sec);
     });
   }
 
   function renderCollage(c, i) {
-    var n = c.options, b = bounds(c), label = c.label || ('Collage ' + (i + 1));
+    var n = c.options, b = bounds(c), label = collageLabel(c, i);
     var sec = el('section', { class: 'collage', id: 'collage-' + (i + 1), 'aria-labelledby': 'h-c' + (i + 1), 'data-file': c.file });
     if (c.hidden) sec.classList.add('adm-collage-hidden');
     var head = el('div', { class: 'collage-head' });
@@ -925,7 +1050,7 @@
       // Fixed-length pack lineup (null = empty slot → NEW / remake requested).
       lineup: lineupOrder.map(function (e, idx) {
         if (!e) return null;
-        return { collage: e.c + 1, option: e.o, previewIndex: idx + 1 };
+        return { collage: e.c + 1, file: collages[e.c].file, option: e.o, previewIndex: idx + 1 };
       }),
       summary: lineupOrder.map(function (e, idx) {
         if (!e) return '#' + (idx + 1) + ' NEW / remake requested';
@@ -1085,7 +1210,7 @@
     document.getElementById('send-error').hidden = true;
     // Honeypot: real people never see or tick this box; bots that fill every field do.
     var bot = !!(f.elements._honey && f.elements._honey.value);
-    if (!FORM_TARGET || bot || PREVIEW) { showThanks(data); return; } // nothing is sent (admin test preview never emails)
+    if (!FORM_TARGET || bot || PREVIEW) { if (!bot) rememberSent(data); showThanks(data); return; } // nothing is sent (admin test preview never emails)
     var btn = document.getElementById('submit');
     sending = true; btn.disabled = true; btn.textContent = 'Sending\u2026';
     var body = {
@@ -1115,7 +1240,7 @@
           if (!r.ok || !(j.success === true || j.success === 'true')) throw new Error(j.message || ('HTTP ' + r.status));
         });
       })
-      .then(function () { sending = false; showThanks(data); })
+      .then(function () { sending = false; rememberSent(data); showThanks(data); })
       .catch(function (err) {
         sending = false; btn.disabled = false; btn.textContent = 'Submit picks';
         showError(err && err.message);
