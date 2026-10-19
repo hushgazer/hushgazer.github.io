@@ -48,12 +48,18 @@ no passwords, no trackers, no external scripts. Picks are emailed through FormSu
 
 ## 3. Client page features
 
-* Tap a character to pick it (one per collage); picks are saved in the browser per
-  project **and** per client, so two clients on one device never mix.
-* **Final lineup**: the picked characters side by side, cut from the full-quality
-  collages at native resolution (no downscaling); "C1 #5" labels, "not picked yet"
-  slots; **Download lineup** saves a full-resolution PNG locally (`canvas.toBlob`,
-  nothing uploaded).
+* Tap characters to pick them (**as many as you want per collage**); tap a selected
+  character again to unpick it. Submit stays disabled until every collage has ≥1 pick.
+  Picks are saved in the browser per project **and** per client, so two clients on one
+  device never mix.
+* **Final lineup**: every selected character side by side (e.g. caption `C1 #2 #5`),
+  cut from the full-quality collages at native resolution (no downscaling);
+  "not picked yet" slots for empty collages; **Download lineup** saves a full-resolution
+  PNG locally (`canvas.toBlob`, nothing uploaded). Sticky bar shows
+  `N/M collages · K picks`.
+* Payload schema **`hush-picks/v2`**: each entry has `selected: number[]` and
+  `option: number|number[]` (single number when only one pick), plus `crops[]`.
+  Older `hush-picks/v1` (single `option` + `crop`) still works in the sheet tools.
 * Subject: `Hush picks: <Title> - <Client> #<clientTag> (<slug>)`.
 
 ## 4. Test mode (Hush only) and the picks-watcher
@@ -80,9 +86,11 @@ no passwords, no trackers, no external scripts. Picks are emailed through FormSu
 
 `python3 tools/make_picks_sheet.py payload.json [-o out.png] [--project-dir DIR]`
 * sheet: each chosen character cropped 1:1 from the ORIGINAL collage, labelled
-  "Collage X - option Y" (transparent collages are shown on white)
-* marked copies: `<out>-marked/<collage>-pick<N>.png` — the full-size original with the
-  chosen character outlined + "PICK #N" (lossless PNG, same size, source untouched)
+  "Collage X - option Y" (transparent collages are shown on white). Multiple picks on
+  one collage → multiple tiles.
+* marked copies: `<out>-marked/<collage>-pick<N>.png` — the full-size original with
+  **every** selected character on that collage outlined + "PICK #N" (one file per
+  option; lossless PNG, same size, source untouched)
 * prints `imageBot: <id>` when project.json has one
 
 ## 7. Admin: Hide / Unhide / Delete (Hush only)

@@ -4,10 +4,10 @@
 Usage: python3 tools/publish_opinion.py <payload.json> [--root SITE_DIR] [--remove NAME]
 
 <payload.json> is the HUSHPICKS JSON from the advisor's picks email (schema
-hush-picks/v1). The script checks that its clientTag belongs to a client with
+hush-picks/v1 or v2). The script checks that its clientTag belongs to a client with
 role "advisor" in projects/<slug>/project.json, then writes / replaces
     "opinions": [{"from": "Adam", "clientTag": "...", "submittedAt": "...",
-                  "overall": "...", "picks": [{"collage": 1, "option": 3, "note": "..."}]}]
+                  "overall": "...", "picks": [{"collage": 1, "option": 3 or [2,5], "note": "..."}]}]
 Deciders then see "<Name>'s pick" tags on the collages and a "<Name>'s opinion"
 section below the last collage. Publish (commit + push) afterwards.
 Note: project.json is a public file, so opinions are readable by anyone who
@@ -34,9 +34,15 @@ def main():
     n = len(cfg['collages'])
     picks = []
     for p in d['picks']:
-        c = int(p['collage']); o = int(p['option'])
-        if not (1 <= c <= n and 1 <= o <= int(cfg['collages'][c - 1]['options'])): sys.exit(f'bad pick {p}')
-        e = {'collage': c, 'option': o}
+        c = int(p['collage'])
+        if not (1 <= c <= n): sys.exit(f'bad pick {p}')
+        raw = p.get('selected', p.get('option'))
+        if raw is None: sys.exit(f'bad pick {p}')
+        opts = [int(x) for x in (raw if isinstance(raw, (list, tuple)) else [raw])]
+        opts = sorted({o for o in opts if o >= 1})
+        maxo = int(cfg['collages'][c - 1]['options'])
+        if not opts or any(o > maxo for o in opts): sys.exit(f'bad pick {p}')
+        e = {'collage': c, 'option': opts[0] if len(opts) == 1 else opts}
         if p.get('note'): e['note'] = str(p['note'])[:500]
         picks.append(e)
     op = {'from': who[0]['name'], 'clientTag': tag, 'submittedAt': d.get('submittedAt'),

@@ -17,7 +17,7 @@
   var app = document.getElementById('app');
   var root = app.getAttribute('data-root') || './';
   var slug = app.getAttribute('data-slug') || new URLSearchParams(location.search).get('p') || '';
-  var picks = [];      // picks[i] = option number (1-based) or null
+  var picks = [];      // picks[i] = sorted array of option numbers (1-based); [] = none
   var collages = [];   // config
   var imgs = [];       // loaded <img> elements
   var project = null;
@@ -128,8 +128,19 @@
       if (isAdvisor()) localStorage.setItem(storeKey + ':notes', JSON.stringify({ notes: notes, overall: document.getElementById('overall').value }));
     } catch (e) {}
   }
+  function normalizeSlot(v) {
+    if (Array.isArray(v)) {
+      return v.map(Number).filter(function (n) { return n >= 1 && n === (n | 0); })
+        .filter(function (n, i, a) { return a.indexOf(n) === i; }).sort(function (a, b) { return a - b; });
+    }
+    if (typeof v === 'number' && v >= 1) return [v];
+    return [];
+  }
   function load() {
-    try { var p = JSON.parse(localStorage.getItem(storeKey)); if (Array.isArray(p) && p.length === collages.length) picks = p; } catch (e) {}
+    try {
+      var p = JSON.parse(localStorage.getItem(storeKey));
+      if (Array.isArray(p) && p.length === collages.length) picks = p.map(normalizeSlot);
+    } catch (e) {}
     if (isAdvisor()) {
       try {
         var nt = JSON.parse(localStorage.getItem(storeKey + ':notes'));
@@ -139,19 +150,37 @@
     }
   }
 
-  function setPick(i, opt) {
-    picks[i] = opt; save();
+  function fmtOpts(arr) {
+    return (arr || []).map(function (n) { return '#' + n; }).join(' ');
+  }
+  function syncCollageUI(i) {
+    var sel = picks[i] || [];
     var sec = document.getElementById('collage-' + (i + 1));
     sec.querySelectorAll('.opt').forEach(function (b) {
-      var on = Number(b.getAttribute('data-opt')) === opt;
+      var on = sel.indexOf(Number(b.getAttribute('data-opt'))) >= 0;
       b.classList.toggle('sel', on);
       b.setAttribute('aria-pressed', on ? 'true' : 'false');
     });
-    sec.querySelectorAll('.nums span').forEach(function (s, k) { s.classList.toggle('sel', k + 1 === opt); });
+    sec.querySelectorAll('.nums span').forEach(function (s, k) { s.classList.toggle('sel', sel.indexOf(k + 1) >= 0); });
     var st = sec.querySelector('.status');
-    st.textContent = opt ? 'Picked: option ' + opt : 'Not picked yet';
-    st.classList.toggle('done', !!opt);
+    st.textContent = sel.length ? ('Picked: ' + fmtOpts(sel) + (sel.length > 1 ? ' · tap again to unpick' : ' · tap again to unpick')) : 'Not picked yet · tap to pick (as many as you want)';
+    st.classList.toggle('done', sel.length > 0);
+  }
+  // Multi-select: tap to pick, tap again to unpick. Any number per collage.
+  function togglePick(i, opt) {
+    var cur = (picks[i] || []).slice();
+    var idx = cur.indexOf(opt);
+    if (idx >= 0) cur.splice(idx, 1);
+    else cur.push(opt);
+    picks[i] = cur.sort(function (a, b) { return a - b; });
+    save();
+    syncCollageUI(i);
     renderSummary();
+  }
+  function setPick(i, opts) {   // restore from storage: opts = number | number[] | null
+    picks[i] = normalizeSlot(opts);
+    save();
+    syncCollageUI(i);
   }
 
   // ==== DECIDER / ADVISOR =================================================
@@ -169,6 +198,13 @@
   }
   function opinionPick(o, i) {
     return o.picks.filter(function (p) { return p && p.collage === i + 1; })[0] || null;
+  }
+  function opinionOpts(op) {
+    if (!op) return [];
+    var o = op.option;
+    if (Array.isArray(o)) return o.map(Number).filter(function (n) { return n >= 1; });
+    if (typeof o === 'number' && o >= 1) return [o];
+    return [];
   }
   // ==== FINAL LINEUP =======================================================
   // The picked characters side by side, cut from the full-quality collages at
@@ -204,21 +240,39 @@
     var strip = document.getElementById('lineup-strip'); strip.textContent = '';
     var any = false;
     collages.forEach(function (c, i) {
-      var p = picks[i], fig = el('figure', { class: 'slot' + (p ? '' : ' empty') });
-      var cv = p ? nativeCrop(i, p) : null;
-      if (cv) {
+      var sel = picks[i] || [];
+      if (!sel.length) {
+        var empty = el('figure', { class: 'slot empty' });
+        empty.appendChild(el('span', { class: 'slot-ph' }, 'not picked yet'));
+        empty.appendChild(el('figcaption', null, 'C' + (i + 1)));
+        strip.appendChild(empty);
+        return;
+      }
+      // One slot with every selected character + caption "C1 #2 #5"
+      var fig = el('figure', { class: 'slot multi' });
+      var row = el('div', { class: 'slot-row' });
+      sel.forEach(function (opt) {
+        var cv = nativeCrop(i, opt);
+        if (!cv) return;
         any = true;
-        cv.setAttribute('role', 'img'); cv.setAttribute('aria-label', 'Collage ' + (i + 1) + ', option ' + p);
-        fig.appendChild(cv);
-      } else fig.appendChild(el('span', { class: 'slot-ph' }, 'not picked yet'));
-      fig.appendChild(el('figcaption', null, 'C' + (i + 1) + (p ? ' #' + p : '')));
+        cv.setAttribute('role', 'img');
+        cv.setAttribute('aria-label', 'Collage ' + (i + 1) + ', option ' + opt);
+        row.appendChild(cv);
+      });
+      fig.appendChild(row);
+      fig.appendChild(el('figcaption', null, 'C' + (i + 1) + ' ' + fmtOpts(sel)));
       strip.appendChild(fig);
     });
     document.getElementById('lineup-download').disabled = !any;
   }
   function downloadLineup() {
     var parts = [];
-    collages.forEach(function (c, i) { var cv = nativeCrop(i, picks[i]); if (cv) parts.push({ cv: cv, label: 'C' + (i + 1) + ' #' + picks[i] }); });
+    collages.forEach(function (c, i) {
+      (picks[i] || []).forEach(function (opt) {
+        var cv = nativeCrop(i, opt);
+        if (cv) parts.push({ cv: cv, label: 'C' + (i + 1) + ' #' + opt });
+      });
+    });
     if (!parts.length) return;
     var pad = 24, lab = 64, maxH = Math.max.apply(null, parts.map(function (p) { return p.cv.height; }));
     var W = parts.reduce(function (s, p) { return s + p.cv.width; }, 0) + pad * (parts.length + 1);
@@ -257,14 +311,14 @@
       if (o.overall) sec.appendChild(el('p', { class: 'op-overall' }, o.overall));
       var ul = el('ul', { class: 'op-list' });
       collages.forEach(function (c, i) {
-        var p = opinionPick(o, i), label = c.label || ('Collage ' + (i + 1));
+        var p = opinionPick(o, i), opts = opinionOpts(p), label = c.label || ('Collage ' + (i + 1));
         var li = el('li');
         var a = el('a', { href: '#collage-' + (i + 1), class: 'op-thumb' });
-        if (p && p.option >= 1 && p.option <= c.options) a.appendChild(cropCanvas(i, p.option, 110));
-        else a.appendChild(el('span', { class: 'ph', 'aria-hidden': 'true' }, '\u2013'));
+        if (opts.length) opts.forEach(function (opt) { if (opt >= 1 && opt <= c.options) a.appendChild(cropCanvas(i, opt, 110)); });
+        else a.appendChild(el('span', { class: 'ph', 'aria-hidden': 'true' }, '–'));
         li.appendChild(a);
         var t = el('div', { class: 'op-text' });
-        t.appendChild(el('strong', null, label + ': ' + (p ? 'option ' + p.option : 'no pick')));
+        t.appendChild(el('strong', null, label + ': ' + (opts.length ? ('option' + (opts.length > 1 ? 's ' : ' ') + opts.join(', ')) : 'no pick')));
         if (p && p.note) t.appendChild(el('p', null, p.note));
         li.appendChild(t); ul.appendChild(li);
       });
@@ -277,11 +331,11 @@
     var sec = el('section', { class: 'collage', id: 'collage-' + (i + 1), 'aria-labelledby': 'h-c' + (i + 1) });
     var head = el('div', { class: 'collage-head' });
     head.appendChild(el('h2', { id: 'h-c' + (i + 1) }, label + ' · ' + n + ' options'));
-    head.appendChild(el('span', { class: 'status', 'aria-live': 'polite' }, 'Not picked yet'));
+    head.appendChild(el('span', { class: 'status', 'aria-live': 'polite' }, 'Not picked yet · tap to pick (as many as you want)'));
     sec.appendChild(head);
     var scroller = el('div', { class: 'scroller' });
     var inner = el('div', { class: 'inner' });
-    var frame = el('div', { class: 'frame', role: 'group', 'aria-label': label + ': tap a character to pick it' });
+    var frame = el('div', { class: 'frame', role: 'group', 'aria-label': label + ': tap characters to pick (tap again to unpick)' });
     var img = el('img', { src: root + 'projects/' + slug + '/' + c.file, alt: label + ': ' + n + ' character options in a row, numbered 1 to ' + n, decoding: 'async' });
     imgs[i] = img;
     img.addEventListener('load', renderSummary);
@@ -294,13 +348,13 @@
       var badge = el('span', { class: 'badge' }, '\u2713 ' + k);
       btn.appendChild(badge);
       opinionsFor().forEach(function (o) {
-        var op = opinionPick(o, i);
-        if (op && op.option === k) {
-          btn.appendChild(el('span', { class: 'op-tag' }, o.from + '\u2019s pick'));
-          btn.setAttribute('aria-label', btn.getAttribute('aria-label') + ' (' + o.from + '\u2019s pick)');
+        var opts = opinionOpts(opinionPick(o, i));
+        if (opts.indexOf(k) >= 0) {
+          btn.appendChild(el('span', { class: 'op-tag' }, o.from + '’s pick'));
+          btn.setAttribute('aria-label', btn.getAttribute('aria-label') + ' (' + o.from + '’s pick)');
         }
       });
-      btn.addEventListener('click', (function (opt) { return function () { setPick(i, opt); }; })(k));
+      btn.addEventListener('click', (function (opt) { return function () { togglePick(i, opt); }; })(k));
       frame.appendChild(btn);
       var s = el('span', null, String(k)); s.style.left = left; s.style.width = width;
       nums.appendChild(s);
@@ -323,17 +377,18 @@
   function renderSummary() {
     var list = document.getElementById('picks'), bar = document.getElementById('bar-thumbs');
     list.textContent = ''; bar.textContent = '';
-    var done = 0;
+    var done = 0, totalPicks = 0;
     collages.forEach(function (c, i) {
-      var label = c.label || ('Collage ' + (i + 1)), p = picks[i];
-      var li = el('li', p ? null : { class: 'missing' });
+      var label = c.label || ('Collage ' + (i + 1)), sel = picks[i] || [];
+      var li = el('li', sel.length ? null : { class: 'missing' });
       var a = el('a', { href: '#collage-' + (i + 1) });
-      var ba = el('a', { href: '#collage-' + (i + 1), title: label + (p ? ': option ' + p : ': not picked') });
-      if (p) {
+      var ba = el('a', { href: '#collage-' + (i + 1), title: label + (sel.length ? ': ' + fmtOpts(sel) : ': not picked') });
+      if (sel.length) {
         done++;
-        a.appendChild(cropCanvas(i, p, 150));
-        a.appendChild(document.createTextNode(label + ': option ' + p));
-        ba.appendChild(cropCanvas(i, p, 60));
+        totalPicks += sel.length;
+        sel.forEach(function (opt) { a.appendChild(cropCanvas(i, opt, 150)); });
+        a.appendChild(document.createTextNode(label + ': ' + fmtOpts(sel)));
+        sel.forEach(function (opt) { ba.appendChild(cropCanvas(i, opt, 60)); });
       } else {
         a.appendChild(el('span', { class: 'ph', 'aria-hidden': 'true' }, '?'));
         a.appendChild(document.createTextNode(label + ': not picked yet'));
@@ -346,8 +401,10 @@
     renderOpinions();
     var all = done === collages.length;
     document.getElementById('submit').disabled = !all;
-    document.getElementById('bar-count').textContent = done + '/' + collages.length + ' picked';
-    document.getElementById('need').textContent = all ? 'All collages picked — ready to submit.' : (collages.length - done) + ' collage(s) still need a pick.';
+    document.getElementById('bar-count').textContent = done + '/' + collages.length + ' collages · ' + totalPicks + ' pick' + (totalPicks === 1 ? '' : 's');
+    document.getElementById('need').textContent = all
+      ? ('All collages have a pick (' + totalPicks + ' total) — ready to submit.')
+      : ((collages.length - done) + ' collage(s) still need at least one pick.');
   }
 
   function cropBox(i, opt) {
@@ -358,10 +415,13 @@
   }
 
   // Machine-readable payload for the bot (tools/make_picks_sheet.py).
+  // hush-picks/v2: each collage may have multiple selected characters.
+  // picks[].option is number|number[] (single number when only one pick for easier
+  // back-compat with older sheet tools; always also mirrored in picks[].selected).
   function payload() {
     var f = document.getElementById('picks-form');
     return {
-      schema: 'hush-picks/v1',
+      schema: 'hush-picks/v2',
       project: slug,
       projectTitle: project.title,
       clientName: client ? client.name : f.elements.name.value.trim(),
@@ -372,17 +432,26 @@
       previewAs: PREVIEW && client ? client.name : undefined,
       submittedAt: new Date().toISOString(),
       picks: collages.map(function (c, i) {
+        var sel = picks[i] || [];
         return {
           collage: i + 1,
           file: 'projects/' + slug + '/' + c.file,
-          option: picks[i],
+          option: sel.length === 1 ? sel[0] : sel.slice(),
+          selected: sel.slice(),
           options: c.options,
           imageSize: { w: imgs[i].naturalWidth, h: imgs[i].naturalHeight },
-          crop: cropBox(i, picks[i]),
+          crop: sel.length === 1 ? cropBox(i, sel[0]) : undefined,
+          crops: sel.map(function (opt) {
+            var box = cropBox(i, opt);
+            return { option: opt, x: box.x, y: box.y, w: box.w, h: box.h };
+          }),
           note: isAdvisor() && notes[i] && notes[i].trim() ? notes[i].trim() : undefined
         };
       }),
-      summary: collages.map(function (c, i) { return 'Collage ' + (i + 1) + ' - option ' + picks[i]; }).join('; ')
+      summary: collages.map(function (c, i) {
+        var sel = picks[i] || [];
+        return 'Collage ' + (i + 1) + ' - option' + (sel.length === 1 ? ' ' + sel[0] : 's ' + sel.join(','));
+      }).join('; ')
     };
   }
 
@@ -393,9 +462,10 @@
     box.appendChild(el('p', null, PREVIEW ? 'Test preview: this is what ' + (client ? client.name : 'the client') + ' sees after Submit. Nothing was emailed.' : 'Hush Media Creations will take it from here. Your picks:'));
     var strip = el('ul', { class: 'picks' });
     data.picks.forEach(function (p, i) {
+      var sel = Array.isArray(p.selected) ? p.selected : (Array.isArray(p.option) ? p.option : (p.option != null ? [p.option] : []));
       var li = el('li');
-      li.appendChild(cropCanvas(i, p.option, 150));
-      li.appendChild(document.createTextNode('Collage ' + p.collage + ' - option ' + p.option));
+      sel.forEach(function (opt) { li.appendChild(cropCanvas(i, opt, 150)); });
+      li.appendChild(document.createTextNode('Collage ' + p.collage + ' - ' + (sel.length ? ('option' + (sel.length > 1 ? 's ' : ' ') + sel.join(', ')) : 'none')));
       strip.appendChild(li);
     });
     box.appendChild(strip);
@@ -414,7 +484,7 @@
   var sending = false;
   function onSubmit(e) {
     e.preventDefault();
-    if (sending || picks.some(function (p) { return !p; })) return;
+    if (sending || picks.some(function (p) { return !p || !p.length; })) return;
     var f = document.getElementById('picks-form');
     if (mode === 'locked') return;
     var nameIn = f.elements.name, nameErr = document.getElementById('name-error');
@@ -465,7 +535,7 @@
   }
 
   function resetAll() {
-    collages.forEach(function (c, i) { setPick(i, null); });
+    collages.forEach(function (c, i) { picks[i] = []; syncCollageUI(i); }); save();
     try { localStorage.removeItem(storeKey); localStorage.removeItem(storeKey + ':notes'); } catch (e) {}
     notes = []; document.querySelectorAll('.note-field textarea').forEach(function (t) { t.value = ''; });
     document.getElementById('overall').value = '';
@@ -534,7 +604,7 @@
     .then(function (p) {
       if (ADMIN) window.HushAdmin.projectBar(slug, p.title || slug, listed ? listed.entry : { slug: slug });
       project = p; collages = p.collages || [];
-      picks = collages.map(function () { return null; });
+      picks = collages.map(function () { return []; });
       if (mode !== 'locked') load();
       document.title = p.title + ' — Pick your characters · Hush Media Creations';
       document.getElementById('title').textContent = p.title;
@@ -566,7 +636,7 @@
       } else {
         document.getElementById('name-field').hidden = false;
       }
-      collages.forEach(function (c, i) { if (picks[i]) setPick(i, picks[i]); });
+      collages.forEach(function (c, i) { if (picks[i] && picks[i].length) { syncCollageUI(i); } });
       renderSummary();
       document.getElementById('picks-form').addEventListener('submit', onSubmit);
       document.getElementById('reset').addEventListener('click', resetAll);

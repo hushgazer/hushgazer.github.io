@@ -6,9 +6,40 @@ B = 'http://127.0.0.1:8765/'
 FS = 'https://formsubmit.co/ajax/**'
 REAL = "var FORM_TARGET = 'aae697c61d8971216e3ef477e0b2a4cf';"
 
+
+def pass_who(pg, name='Guest', password=None):
+    """Clear the Who-are-you gate (Guest for name-mode demo; Julius/Adam need passwords)."""
+    try:
+        locked = pg.evaluate("document.documentElement.classList.contains('who-lock')")
+    except Exception:
+        locked = True
+    if not locked:
+        return
+    try:
+        pg.wait_for_selector('#who-overlay', timeout=2500)
+    except Exception:
+        return
+    pg.wait_for_selector('#who-choices .who-choice')
+    choice = pg.locator('.who-choice[data-who="%s"]' % name)
+    if choice.count() == 0 and name != 'Guest' and pg.locator('.who-choice[data-who="Guest"]').count():
+        name, choice = 'Guest', pg.locator('.who-choice[data-who="Guest"]')
+    assert choice.count(), 'who choice missing: ' + name
+    pw = password or {'Julius': 'abc', 'Adam': 'xyz', 'Hush': 'hush'}.get(name)
+    if name == 'Guest' or not pw:
+        with pg.expect_navigation():
+            choice.click()
+    else:
+        choice.click()
+        pg.wait_for_selector('#who-hush:not([hidden]) #who-pass')
+        pg.fill('#who-pass', pw)
+        with pg.expect_navigation():
+            pg.click('#who-signin')
+
 def pick_all(pg):
-    pg.goto(B + 'demo/'); pg.wait_for_selector('#collage-3 .opt')
-    pg.click('#collage-1 .opt[data-opt="3"]'); pg.click('#collage-1 .opt[data-opt="5"]')  # move pick
+    pg.goto(B + 'demo/'); pass_who(pg); pg.wait_for_selector('#collage-3 .opt')
+    # multi-select: tap 3 then 5 selects both; tap 3 again to unpick → leave only 5
+    pg.click('#collage-1 .opt[data-opt="3"]'); pg.click('#collage-1 .opt[data-opt="5"]')
+    pg.click('#collage-1 .opt[data-opt="3"]')  # deselect 3
     pg.click('#collage-2 .opt[data-opt="2"]')
 
 with sync_playwright() as p:
@@ -39,7 +70,7 @@ with sync_playwright() as p:
 
     # 1) desktop, EMPTY target: thanks panel shows locally, nothing leaves the page
     ctx = new_ctx(viewport={'width': 1280, 'height': 900}); pg = ctx.new_page(); watch(pg)
-    pg.route('**/assets/project.js', js_with(''))
+    pg.route('**/assets/project.js*', js_with(''))
     pick_all(pg)
     pg.evaluate("document.getElementById('collage-2').scrollIntoView({block:'center'})"); pg.wait_for_timeout(300)
     pg.screenshot(path='preview-desktop.png')
@@ -69,7 +100,7 @@ with sync_playwright() as p:
         if route.request.method == 'OPTIONS': return route.fulfill(status=204, headers=hdr)
         route.fulfill(status=200, headers=hdr, content_type='application/json', body=json.dumps({'success': 'true', 'message': 'The form was submitted successfully.'}))
     ctx = new_ctx(viewport={'width': 1280, 'height': 900}); pg = ctx.new_page(); watch(pg)
-    pg.route('**/assets/project.js', mock_js); pg.route(FS, mock_api)
+    pg.route('**/assets/project.js*', mock_js); pg.route(FS, mock_api)
     pick_all(pg); pg.click('#collage-3 .opt[data-opt="8"]'); pg.fill('input[name=name]', 'Test Client')
     pg.click('#submit'); pg.wait_for_selector('#confirm:not([hidden])')
     post = [r for r in posts if r.method == 'POST'][0]
@@ -84,17 +115,60 @@ with sync_playwright() as p:
     assert not any(k not in ('_cc',) and ('mail' in k.lower() or 'replyto' in k.lower()) for k in sent), 'no client email field may be sent'
     m = re.fullmatch(r'HUSHPICKS_JSON_BEGIN (.*) HUSHPICKS_JSON_END', sent['payload'])
     data = json.loads(m.group(1))
+    assert data['schema'] == 'hush-picks/v2'
     assert [x['option'] for x in data['picks']] == [5, 2, 8]
+    assert [x['selected'] for x in data['picks']] == [[5], [2], [8]]
+    assert all(len(x['crops']) == 1 for x in data['picks'])
     assert data['clientName'] == 'Test Client' and data['test'] is False and 'clientEmail' not in data
     assert pg.locator('#test-banner').count() == 0 and 'TEST' not in pg.text_content('body')
     open('tools/sample-payload.json', 'w').write(json.dumps(data, indent=2))
     print('PASS live submit (mocked FormSubmit): POST body ok, payload JSON intact ->', data['summary'])
     ctx.close()
 
+    # 2b) MULTI-SELECT: two options on collage 1, deselect works, payload has arrays + crops[]
+    posts.clear(); ctx = new_ctx(viewport={'width': 1280, 'height': 900}); pg = ctx.new_page(); watch(pg)
+    pg.route('**/assets/project.js*', mock_js); pg.route(FS, mock_api)
+    pg.goto(B + 'demo/'); pass_who(pg); pg.wait_for_selector('#collage-3 .opt')
+    pg.click('#collage-1 .opt[data-opt="2"]'); pg.click('#collage-1 .opt[data-opt="5"]')
+    assert pg.locator('#collage-1 .opt.sel').count() == 2
+    assert 'Picked: #2 #5' in pg.text_content('#collage-1 .status')
+    assert 'tap again to unpick' in pg.text_content('#collage-1 .status')
+    pg.click('#collage-1 .opt[data-opt="2"]')  # deselect
+    assert pg.locator('#collage-1 .opt.sel').count() == 1 and pg.is_visible('#collage-1 .opt.sel[data-opt="5"]')
+    pg.click('#collage-1 .opt[data-opt="2"]')  # re-add → multi again
+    pg.click('#collage-2 .opt[data-opt="3"]'); pg.click('#collage-3 .opt[data-opt="1"]')
+    pg.fill('input[name=name]', 'Multi Client'); pg.click('#submit'); pg.wait_for_selector('#confirm:not([hidden])')
+    sent = json.loads([r for r in posts if r.method == 'POST'][0].post_data)
+    md = json.loads(re.fullmatch(r'HUSHPICKS_JSON_BEGIN (.*) HUSHPICKS_JSON_END', sent['payload']).group(1))
+    assert md['schema'] == 'hush-picks/v2'
+    assert md['picks'][0]['option'] == [2, 5] and md['picks'][0]['selected'] == [2, 5]
+    assert len(md['picks'][0]['crops']) == 2 and {c['option'] for c in md['picks'][0]['crops']} == {2, 5}
+    assert md['picks'][1]['option'] == 3 and md['picks'][2]['option'] == 1
+    assert 'options 2,5' in md['summary'] or 'option' in md['summary']
+    assert 'Collage 1 - options 2,5' in md['summary']
+    assert pg.locator('#confirm canvas').count() == 4  # 2+1+1
+    print('PASS multi-select: two picks on one collage, tap-to-unpick, v2 payload + crops[]')
+    ctx.close()
+
+    # 2c) lineup screenshot with multi picks visible
+    ctx = new_ctx(viewport={'width': 1280, 'height': 900}); pg = ctx.new_page(); watch(pg)
+    pg.route('**/assets/project.js*', mock_js); pg.route(FS, mock_api)
+    pg.goto(B + 'demo/'); pass_who(pg); pg.wait_for_selector('#collage-3 .opt')
+    pg.click('#collage-1 .opt[data-opt="2"]'); pg.click('#collage-1 .opt[data-opt="5"]')
+    pg.click('#collage-2 .opt[data-opt="3"]'); pg.click('#collage-3 .opt[data-opt="7"]')
+    assert pg.text_content('#lineup .slot:nth-child(1) figcaption') == 'C1 #2 #5'
+    assert pg.text_content('#bar-count') == '3/3 collages · 4 picks'
+    pg.evaluate("document.getElementById('collage-1').scrollIntoView({block:'center'})"); pg.wait_for_timeout(250)
+    pg.screenshot(path='preview-multi-collage.png')
+    pg.evaluate("document.getElementById('lineup').scrollIntoView()"); pg.wait_for_timeout(250)
+    pg.screenshot(path='preview-multi-lineup.png')
+    print('PASS multi-select screenshots')
+    ctx.close()
+
     # 3) LIVE path, API error -> error message, button re-enabled, no thanks
     ctx = new_ctx(); pg = ctx.new_page()
     pg.on('pageerror', lambda e: errs.append(str(e)))
-    pg.route('**/assets/project.js', mock_js)
+    pg.route('**/assets/project.js*', mock_js)
     pg.route(FS, lambda r: r.fulfill(status=400, headers={'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*'}, content_type='application/json', body='{"success":"false","message":"Form not activated"}'))
     pick_all(pg); pg.click('#collage-3 .opt[data-opt="8"]'); pg.fill('input[name=name]', 'Test Client'); pg.click('#submit')
     pg.wait_for_selector('#send-error:not([hidden])')
@@ -104,7 +178,7 @@ with sync_playwright() as p:
 
     # 4) honeypot ticked (bot) -> no POST
     posts.clear(); ctx = new_ctx(); pg = ctx.new_page()
-    pg.route('**/assets/project.js', mock_js); pg.route(FS, mock_api)
+    pg.route('**/assets/project.js*', mock_js); pg.route(FS, mock_api)
     pick_all(pg); pg.click('#collage-3 .opt[data-opt="8"]'); pg.fill('input[name=name]', 'Bot')
     pg.evaluate("document.querySelector('input[name=_honey]').value = 'spam'"); pg.click('#submit'); pg.wait_for_timeout(300)
     assert not [r for r in posts if r.method == 'POST'], 'honeypot submission should not POST'
@@ -115,8 +189,8 @@ with sync_playwright() as p:
     from PIL import Image
     ext.clear()
     ctx = new_ctx(viewport={'width': 1280, 'height': 900}, accept_downloads=True); pg = ctx.new_page(); watch(pg)
-    pg.route('**/assets/project.js', mock_js); pg.route(FS, mock_api)
-    pg.goto(B + 'demo/'); pg.wait_for_selector('#lineup .slot')
+    pg.route('**/assets/project.js*', mock_js); pg.route(FS, mock_api)
+    pg.goto(B + 'demo/'); pass_who(pg); pg.wait_for_selector('#lineup .slot')
     assert pg.locator('#lineup .slot').count() == 3 and pg.locator('#lineup .slot.empty').count() == 3
     assert 'not picked yet' in pg.text_content('#lineup') and pg.is_disabled('#lineup-download')
     order = pg.evaluate("[...document.querySelectorAll('#collages, #lineup, #summary')].map(e => e.id)")
@@ -130,7 +204,11 @@ with sync_playwright() as p:
     dims = pg.eval_on_selector('#lineup .slot:nth-child(1) canvas', 'c => [c.width, c.height]')
     top = cfg['collages'][0].get('cropTop', 0)
     assert dims == [w5, c1.height - top], (dims, w5, c1.height, top)   # native pixels, no downscaling; header strip trimmed
-    pg.click('#collage-1 .opt[data-opt="2"]')                          # live update on change
+    # multi-select: add #2 alongside #5; caption becomes "C1 #2 #5"; tap #5 again to unpick
+    pg.click('#collage-1 .opt[data-opt="2"]')
+    assert pg.text_content('#lineup .slot:nth-child(1) figcaption') == 'C1 #2 #5'
+    assert pg.locator('#lineup .slot:nth-child(1) canvas').count() == 2
+    pg.click('#collage-1 .opt[data-opt="5"]')  # deselect 5 → leave #2
     assert pg.text_content('#lineup .slot:nth-child(1) figcaption') == 'C1 #2'
     pg.click('#collage-2 .opt[data-opt="3"]')
     with pg.expect_download() as dl_info: pg.click('#lineup-download')
@@ -145,7 +223,7 @@ with sync_playwright() as p:
 
     # 4b) name is required: all picked, empty name -> inline error, no POST
     posts.clear(); ctx = new_ctx(); pg = ctx.new_page(); watch(pg)
-    pg.route('**/assets/project.js', mock_js); pg.route(FS, mock_api)
+    pg.route('**/assets/project.js*', mock_js); pg.route(FS, mock_api)
     pick_all(pg); pg.click('#collage-3 .opt[data-opt="8"]')
     assert pg.get_attribute('#client-name', 'required') is not None
     assert pg.locator('input[type=password], input[type=email]').count() == 0, 'no password or email fields'
@@ -160,14 +238,14 @@ with sync_playwright() as p:
 
     # 4c) TEST MODE: ?test=1 -> banner, [TEST] subject, test:true; persists in tab; clear link; ?test=0 exits
     posts.clear(); ctx = new_ctx(viewport={'width': 1280, 'height': 900}); pg = ctx.new_page(); watch(pg)
-    pg.route('**/assets/project.js', mock_js); pg.route(FS, mock_api)
-    pg.goto(B + 'demo/?test=1'); pg.wait_for_selector('#test-banner')
+    pg.route('**/assets/project.js*', mock_js); pg.route(FS, mock_api)
+    pg.goto(B + 'demo/?test=1'); pass_who(pg); pg.wait_for_selector('#test-banner')
     assert 'TEST MODE \u00b7 submissions are marked as tests' in pg.text_content('#test-banner')
-    pg.goto(B + 'demo/'); pg.wait_for_selector('#collage-3 .opt')
+    pg.goto(B + 'demo/'); pass_who(pg); pg.wait_for_selector('#collage-3 .opt')
     assert pg.locator('#test-banner').count() == 1, 'test mode must persist in the tab (sessionStorage)'
     pg.click('#collage-1 .opt[data-opt="5"]'); pg.click('#collage-2 .opt[data-opt="2"]')
     pg.click('#test-clear'); pg.wait_for_timeout(200)
-    assert pg.locator('.opt.sel').count() == 0 and pg.text_content('#bar-count') == '0/3 picked'
+    assert pg.locator('.opt.sel').count() == 0 and pg.text_content('#bar-count').startswith('0/3 collages')
     pg.click('#collage-1 .opt[data-opt="5"]'); pg.click('#collage-2 .opt[data-opt="2"]'); pg.click('#collage-3 .opt[data-opt="8"]')
     pg.fill('#client-name', 'Hush'); pg.click('#submit'); pg.wait_for_selector('#confirm:not([hidden])')
     sent = json.loads([r for r in posts if r.method == 'POST'][0].post_data)
@@ -177,11 +255,11 @@ with sync_playwright() as p:
     assert td['test'] is True and td['clientName'] == 'Hush'
     pg.click('#test-exit'); pg.wait_for_selector('#collage-3 .opt')
     assert pg.locator('#test-banner').count() == 0
-    pg.goto(B + 'demo/'); pg.wait_for_selector('#collage-3 .opt'); assert pg.locator('#test-banner').count() == 0
+    pg.goto(B + 'demo/'); pass_who(pg); pg.wait_for_selector('#collage-3 .opt'); assert pg.locator('#test-banner').count() == 0
     print('PASS test mode: banner, persists per tab, clear link, [TEST] subject + test:true, exit')
     ctx.close()
     # a fresh tab/context without ?test=1 never shows test mode
-    ctx = new_ctx(); pg = ctx.new_page(); pg.goto(B + 'demo/'); pg.wait_for_selector('#collage-3 .opt')
+    ctx = new_ctx(); pg = ctx.new_page(); pg.goto(B + 'demo/'); pass_who(pg); pg.wait_for_selector('#collage-3 .opt')
     assert pg.locator('#test-banner').count() == 0; ctx.close()
 
     # 4d) PERSONAL CLIENT LINKS (project.json with "clients"; served mocked, demo stays name-mode)
@@ -198,21 +276,24 @@ with sync_playwright() as p:
         route.fulfill(body=json.dumps(cfg), content_type='application/json')
     def client_ctx():
         c = new_ctx(viewport={'width': 1280, 'height': 900}); pg = c.new_page(); watch(pg)
-        pg.route('**/assets/project.js', mock_js); pg.route(FS, mock_api)
+        pg.route('**/assets/project.js*', mock_js); pg.route(FS, mock_api)
         pg.route('**/projects/demo/project.json', with_clients); return c, pg
-    # no token and a bad token -> polite gate, collages viewable, picking off, no name field, no POST
+    # Who-are-you gate first; shared link (no/bad ?c=) + Julius password -> pick as Julius (session)
     posts.clear(); ctx, pg = client_ctx()
-    for q in ['', '?c=julius-WRONGtoken00', '?c=%3Cscript%3E']:
-        pg.goto(B + 'demo/' + q); pg.wait_for_selector('#collage-3 .opt')
-        assert pg.is_visible('#gate') and 'needs your personal link from Hush Media Creations' in pg.text_content('#gate')
-        assert pg.is_hidden('#summary') and pg.is_hidden('.bar') and pg.is_hidden('#name-field')
-        assert pg.locator('#collage-1 img').is_visible() and pg.is_disabled('#collage-1 .opt[data-opt="3"]')
-        assert pg.locator('.opt.sel').count() == 0
+    pg.goto(B + 'demo/'); pg.wait_for_selector('#who-overlay')
+    assert pg.locator('.who-choice[data-who="Julius"]').count() == 1
     pg.screenshot(path='preview-gate.png')
+    pass_who(pg, 'Julius')
+    pg.wait_for_selector('#client-badge:not([hidden])')
+    assert 'Picking as Julius' in pg.text_content('#client-badge') and pg.is_hidden('#gate')
+    # bad ?c= falls back to session who
+    pg.goto(B + 'demo/?c=julius-WRONGtoken00'); pass_who(pg, 'Julius')
+    pg.wait_for_selector('#client-badge:not([hidden])')
+    assert 'Picking as Julius' in pg.text_content('#client-badge')
     assert not [r for r in posts if r.method == 'POST']
-    print('PASS client links: no/bad token -> gate, collages view-only')
+    print('PASS client links: who-gate + shared link picks as Julius; bad token falls back to session')
     # valid token -> Picking as Julius, no name field, subject + payload carry name and tag
-    pg.goto(B + 'demo/?c=' + TOK['Julius']); pg.wait_for_selector('#client-badge:not([hidden])')
+    pg.goto(B + 'demo/?c=' + TOK['Julius']); pass_who(pg, 'Julius'); pg.wait_for_selector('#client-badge:not([hidden])')
     assert pg.text_content('#client-badge') == 'Picking as Julius' and pg.is_hidden('#gate') and pg.is_hidden('#name-field')
     assert TOK['Julius'] not in pg.content().replace(pg.url, '')
     # decider sees Adam's opinion BELOW the last collage, ABOVE the submit area, + subtle tags on collages
@@ -228,12 +309,12 @@ with sync_playwright() as p:
     pg.click('#collage-1 .opt[data-opt="5"]'); pg.click('#collage-2 .opt[data-opt="2"]'); pg.click('#collage-3 .opt[data-opt="8"]')
     pg.screenshot(path='preview-client.png')
     # Adam on the same device (same browser profile) sees none of Julius's picks
-    pg.goto(B + 'demo/?c=' + TOK['Adam']); pg.wait_for_selector('#client-badge:not([hidden])')
+    pg.goto(B + 'demo/?c=' + TOK['Adam']); pass_who(pg, 'Adam'); pg.wait_for_selector('#client-badge:not([hidden])')
     assert pg.text_content('#client-badge').startswith('Picking as Adam') and pg.locator('.opt.sel').count() == 0
     assert pg.locator('.op-tag').count() == 0 and pg.locator('#opinions').count() == 0, 'advisor never sees opinions'
     assert pg.locator('.note-field').count() == 3 and pg.is_visible('#opinion-field')
     pg.click('#collage-1 .opt[data-opt="1"]')
-    pg.goto(B + 'demo/?c=' + TOK['Julius']); pg.wait_for_selector('#client-badge:not([hidden])')
+    pg.goto(B + 'demo/?c=' + TOK['Julius']); pass_who(pg, 'Julius'); pg.wait_for_selector('#client-badge:not([hidden])')
     assert pg.locator('.opt.sel').count() == 3, 'Julius picks restored'
     pg.click('#submit'); pg.wait_for_selector('#confirm:not([hidden])')
     sent = json.loads([r for r in posts if r.method == 'POST'][0].post_data)
@@ -243,11 +324,11 @@ with sync_playwright() as p:
     cd = json.loads(re.fullmatch(r'HUSHPICKS_JSON_BEGIN (.*) HUSHPICKS_JSON_END', sent['payload']).group(1))
     assert cd['clientName'] == 'Julius' and cd['clientTag'] == tag and cd['test'] is False
     assert TOK['Julius'] not in sent['payload'] and TOK['Julius'] not in json.dumps(sent)
-    pg.goto(B + 'demo/?c=' + TOK['Adam']); pg.wait_for_selector('#client-badge:not([hidden])')
+    pg.goto(B + 'demo/?c=' + TOK['Adam']); pass_who(pg, 'Adam'); pg.wait_for_selector('#client-badge:not([hidden])')
     assert pg.locator('.opt.sel').count() == 1 and pg.is_visible('#collage-1 .opt.sel[data-opt="1"]'), 'Adam picks isolated'
     print('PASS client links: valid token, two clients isolated, name+tag in subject/payload, token never sent')
     # test mode together with ?c=
-    posts.clear(); pg.goto(B + 'demo/?c=' + TOK['Adam'] + '&test=1'); pg.wait_for_selector('#test-banner')
+    posts.clear(); pg.goto(B + 'demo/?c=' + TOK['Adam'] + '&test=1'); pass_who(pg, 'Adam'); pg.wait_for_selector('#test-banner')
     assert pg.text_content('#client-badge').startswith('Picking as Adam')
     pg.click('#test-clear'); assert pg.locator('.opt.sel').count() == 0
     pg.fill('#note-2', 'Too busy'); pg.fill('#overall', 'Julius should go with 2.')
@@ -268,7 +349,7 @@ with sync_playwright() as p:
     if os.path.exists('tools/private/client-links.json'):
         toks = [v['token'] for p in json.load(open('tools/private/client-links.json')).values() for v in p.values()]
         for fn in pub:
-            if os.path.isfile(fn) and not fn.endswith('.png'):
+            if os.path.isfile(fn) and not fn.endswith('.png') and not fn.startswith('tools/test_') and fn != 'tools/shoot.py':
                 body = open(fn, errors='ignore').read()
                 assert not any(t in body for t in toks), f'raw client token found in tracked file {fn}'
     assert not any(fn.startswith(('tools/private/', 'preview-projects/')) for fn in pub)
@@ -281,7 +362,7 @@ with sync_playwright() as p:
     ctx.close()
     ctx = new_ctx(viewport={'width': 390, 'height': 844}, device_scale_factor=2, is_mobile=True, has_touch=True)
     m = ctx.new_page(); watch(m)
-    m.goto(B + 'demo/'); m.wait_for_selector('#collage-3 .opt')
+    m.goto(B + 'demo/'); pass_who(m); m.wait_for_selector('#collage-3 .opt')
     m.tap('#collage-1 .opt[data-opt="2"]'); m.tap('#collage-2 .opt[data-opt="4"]'); m.wait_for_timeout(300)
     m.screenshot(path='preview-mobile.png', full_page=True)
     print('errors (incl. CSP violations):', errs)

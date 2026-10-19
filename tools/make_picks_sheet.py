@@ -4,16 +4,21 @@
 Usage: python3 tools/make_picks_sheet.py payload.json [-o out.png] [--root SITE_DIR]
                                          [--project-dir DIR] [--no-marked]
 
-Payload (schema hush-picks/v1): {"project": slug, "picks": [{"collage", "file",
-"option", "options", "crop": {"x","y","w","h"}}...]}. Crops are cut from the
-ORIGINAL collage images at native resolution (no downscaling); each tile gets a
-"Collage X - option Y" label. If a crop is missing it is recomputed from
-projects/<slug>/project.json (equal columns or custom "columns").
+Payload (schema hush-picks/v1 or v2): {"project": slug, "picks": [{"collage",
+"file", "option" (number|number[]), "selected" (number[], v2), "options",
+"crop" / "crops": [{"option","x","y","w","h"}]...}]}. Crops are cut from the
+ORIGINAL collage images at native resolution (no downscaling); each selected
+character becomes its own tile with a "Collage X - option Y" label. If a crop is
+missing it is recomputed from projects/<slug>/project.json (equal columns or
+custom "columns"). Multiple picks on one collage produce multiple tiles + marked
+copies.
 
-Also writes one MARKED copy per collage to <out-stem>-marked/<collage-stem>-pick<N>.png:
-the original collage at its native size (never resampled or recompressed lossily,
-source files untouched) with the chosen character outlined (cyan #00E5FF + dark
-inner stroke, ~1% of image height) and a "PICK #N" label at the top of the box.
+Also writes one MARKED copy per selected character to
+<out-stem>-marked/<collage-stem>-pick<N>.png: the original collage at its native
+size (never resampled or recompressed lossily, source files untouched) with every
+chosen character on that collage outlined (cyan #00E5FF + dark inner stroke,
+~1% of image height) and a "PICK #N" label at the top of each box. When a collage
+has several picks, one marked file is written per option (same outlines on each).
 
 --project-dir DIR: folder holding the collage images (default projects/<slug>/
 under --root; payload "file" paths with a "/" are resolved against --root first,
@@ -36,21 +41,49 @@ def crop_from_config(pj, idx, opt, im):
 
 CYAN, DARK = (0, 229, 255), (10, 12, 16)
 
-def mark(im, c, opt):
-    """Return a copy of im (same size/mode family) with crop box c outlined. No resampling."""
+def selected_opts(p):
+    """Return sorted unique 1-based option numbers from a v1 or v2 picks entry."""
+    if p.get("selected") is not None:
+        raw = p["selected"]
+    else:
+        raw = p.get("option")
+    if raw is None: return []
+    if isinstance(raw, (list, tuple)): opts = [int(x) for x in raw]
+    else: opts = [int(raw)]
+    return sorted({o for o in opts if o >= 1})
+
+def crop_entries(p, pj, im):
+    """List of (opt, crop_dict) for every selected character on this picks entry."""
+    opts = selected_opts(p)
+    if not opts: return []
+    if isinstance(p.get("crops"), list) and p["crops"]:
+        by = {int(c["option"]): c for c in p["crops"] if c and c.get("option") is not None}
+        out = []
+        for o in opts:
+            c = by.get(o) or crop_from_config(pj, p["collage"] - 1, o, im)
+            out.append((o, {"x": c["x"], "y": c["y"], "w": c["w"], "h": c["h"]}))
+        return out
+    if p.get("crop") and len(opts) == 1:
+        c = p["crop"]; return [(opts[0], {"x": c["x"], "y": c["y"], "w": c["w"], "h": c["h"]})]
+    return [(o, crop_from_config(pj, p["collage"] - 1, o, im)) for o in opts]
+
+def mark(im, boxes):
+    """Return a copy of im with every (opt, crop) in boxes outlined. No resampling."""
     m = im.convert("RGBA") if im.mode not in ("RGB", "RGBA") else im.copy()
     d = ImageDraw.Draw(m)
     t = max(4, round(im.height * 0.01)); inner = max(2, t // 3)
-    x0, y0 = max(0, c["x"]), max(0, c["y"])
-    x1, y1 = min(im.width, c["x"] + c["w"]) - 1, min(im.height, c["y"] + c["h"]) - 1
-    d.rectangle((x0, y0, x1, y1), outline=CYAN, width=t)                      # bright outer stroke
-    d.rectangle((x0 + t, y0 + t, x1 - t, y1 - t), outline=DARK, width=inner)  # dark inner stroke
-    label = f"PICK #{opt}"; f = font(max(18, round(im.height * 0.06)))
-    bb = d.textbbox((0, 0), label, font=f); tw, th = bb[2] - bb[0], bb[3] - bb[1]
-    px, py = max(6, th // 3), max(4, th // 4)
-    lx = x0 + max(0, (c["w"] - tw - 2 * px) // 2); ly = y0 + t + inner + 6
-    d.rectangle((lx, ly, lx + tw + 2 * px, ly + th + 2 * py), fill=CYAN, outline=DARK, width=max(2, inner // 2))
-    d.text((lx + px - bb[0], ly + py - bb[1]), label, font=f, fill=DARK)
+    f = font(max(18, round(im.height * 0.06)))
+    for opt, c in boxes:
+        x0, y0 = max(0, c["x"]), max(0, c["y"])
+        x1, y1 = min(im.width, c["x"] + c["w"]) - 1, min(im.height, c["y"] + c["h"]) - 1
+        d.rectangle((x0, y0, x1, y1), outline=CYAN, width=t)
+        d.rectangle((x0 + t, y0 + t, x1 - t, y1 - t), outline=DARK, width=inner)
+        label = f"PICK #{opt}"
+        bb = d.textbbox((0, 0), label, font=f); tw, th = bb[2] - bb[0], bb[3] - bb[1]
+        px, py = max(6, th // 3), max(4, th // 4)
+        lx = x0 + max(0, (c["w"] - tw - 2 * px) // 2); ly = y0 + t + inner + 6
+        d.rectangle((lx, ly, lx + tw + 2 * px, ly + th + 2 * py), fill=CYAN, outline=DARK, width=max(2, inner // 2))
+        d.text((lx + px - bb[0], ly + py - bb[1]), label, font=f, fill=DARK)
     return m
 
 def resolve(root, pdir, f):
@@ -77,13 +110,17 @@ def main():
     for i, p in enumerate(sorted(data["picks"], key=lambda p: p["collage"])):
         path = resolve(a.root, pdir, p["file"])
         im = Image.open(path); im.load()
-        c = p.get("crop") or crop_from_config(pj, p["collage"] - 1, p["option"], im)
+        boxes = crop_entries(p, pj, im)
+        if not boxes: continue
         if not a.no_marked:
             os.makedirs(mdir, exist_ok=True)
-            mp = os.path.join(mdir, f"{os.path.splitext(os.path.basename(path))[0]}-pick{p['option']}.png")
-            mk = mark(im, c, p["option"]); assert mk.size == im.size
-            mk.save(mp, compress_level=6); marked.append((mp, mk.size))  # PNG = lossless, original size
-        tiles.append((im.crop((c["x"], c["y"], c["x"] + c["w"], c["y"] + c["h"])), f"Collage {p['collage']} - option {p['option']}"))
+            mk = mark(im, boxes); assert mk.size == im.size
+            for opt, _c in boxes:
+                mp = os.path.join(mdir, f"{os.path.splitext(os.path.basename(path))[0]}-pick{opt}.png")
+                mk.save(mp, compress_level=6); marked.append((mp, mk.size))  # PNG = lossless, original size
+        for opt, c in boxes:
+            tiles.append((im.crop((c["x"], c["y"], c["x"] + c["w"], c["y"] + c["h"])), f"Collage {p['collage']} - option {opt}"))
+    if not tiles: raise SystemExit("no selected characters in payload")
     pad, lab = 30, 90
     f = font(44)
     H = max(t.height for t, _ in tiles) + lab + 2 * pad

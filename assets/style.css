@@ -114,6 +114,8 @@ textarea{resize:vertical}
 .slot{flex:0 0 auto;margin:0;display:flex;flex-direction:column;align-items:center;gap:4px}
 .slot canvas{display:block;height:clamp(180px,32vw,340px);width:auto;max-width:none}
 .slot-ph{display:flex;align-items:center;justify-content:center;text-align:center;height:clamp(180px,32vw,340px);width:clamp(70px,10vw,120px);border:2px dashed var(--warn);border-radius:8px;color:var(--warn);font-size:.8rem;padding:6px}
+.slot-row{display:flex;gap:4px;align-items:flex-end}
+.slot.multi canvas{height:clamp(160px,28vw,300px)}
 .slot figcaption{font-size:.8rem;font-weight:700;color:var(--muted)}
 .slot:not(.empty) figcaption{color:var(--pick)}
 /* transparent (RGBA) collages: show them on white, like the image bots render them */

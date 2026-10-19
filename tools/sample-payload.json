@@ -1,17 +1,20 @@
 {
-  "schema": "hush-picks/v1",
+  "schema": "hush-picks/v2",
   "project": "demo",
   "projectTitle": "Demo Project (Sample)",
   "clientName": "Test Client",
   "clientTag": null,
   "clientRole": null,
   "test": false,
-  "submittedAt": "2026-10-19T13:58:10.653Z",
+  "submittedAt": "2026-10-19T14:50:21.545Z",
   "picks": [
     {
       "collage": 1,
       "file": "projects/demo/collage-1.png",
       "option": 5,
+      "selected": [
+        5
+      ],
       "options": 8,
       "imageSize": {
         "w": 3200,
@@ -22,12 +25,24 @@
         "y": 116,
         "w": 400,
         "h": 684
-      }
+      },
+      "crops": [
+        {
+          "option": 5,
+          "x": 1600,
+          "y": 116,
+          "w": 400,
+          "h": 684
+        }
+      ]
     },
     {
       "collage": 2,
       "file": "projects/demo/collage-2.png",
       "option": 2,
+      "selected": [
+        2
+      ],
       "options": 7,
       "imageSize": {
         "w": 3200,
@@ -38,12 +53,24 @@
         "y": 116,
         "w": 458,
         "h": 684
-      }
+      },
+      "crops": [
+        {
+          "option": 2,
+          "x": 456,
+          "y": 116,
+          "w": 458,
+          "h": 684
+        }
+      ]
     },
     {
       "collage": 3,
       "file": "projects/demo/collage-3.png",
       "option": 8,
+      "selected": [
+        8
+      ],
       "options": 8,
       "imageSize": {
         "w": 3200,
@@ -54,7 +81,16 @@
         "y": 116,
         "w": 400,
         "h": 684
-      }
+      },
+      "crops": [
+        {
+          "option": 8,
+          "x": 2800,
+          "y": 116,
+          "w": 400,
+          "h": 684
+        }
+      ]
     }
   ],
   "summary": "Collage 1 - option 5; Collage 2 - option 2; Collage 3 - option 8"
