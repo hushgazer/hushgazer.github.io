@@ -1,0 +1,8 @@
+{
+  "name": "hush-admin-publish",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/admin-publish.test.mjs"
+  }
+}

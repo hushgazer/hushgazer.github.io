@@ -1,0 +1,5 @@
+# Copy to .dev.vars for `npx wrangler dev`. Never commit .dev.vars.
+# ADMIN_SIGN_KEY is signKey from tools/private/admin.json (64 hex characters).
+# GITHUB_TOKEN is a fine-grained PAT with Contents: Read and write on this repo.
+ADMIN_SIGN_KEY=
+GITHUB_TOKEN=

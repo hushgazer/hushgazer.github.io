@@ -12,6 +12,8 @@ Thumbs.db
 .vscode/
 .idea/
 node_modules/
+.wrangler/
+.dev.vars
 # Private client links (raw tokens) - NEVER commit or publish
 tools/private/
 # Local-only preview projects (real client collages) - never committed

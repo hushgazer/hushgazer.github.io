@@ -1,4 +1,4 @@
-"""Admin sign-in + Hide/Unhide/Delete smoke test (Playwright). FormSubmit is mocked; no real
+"""Admin sign-in + Hide/Unhide/Delete smoke test (Playwright). The admin Worker is mocked; no real
 internet. Run from the site root with a server on :8765:
    python3 -m http.server 8765 &  python3 tools/test_admin.py
 The password is read from tools/private/admin.json (never hard-coded here)."""
@@ -8,7 +8,7 @@ R = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PRIV = json.load(open(os.path.join(R, 'tools', 'private', 'admin.json')))
 B = 'http://127.0.0.1:8765/'
 LIVE = 'https://hushgazer.github.io/'   # served from the local files, so the page acts "live"
-FS = 'https://formsubmit.co/ajax/**'
+API = re.search(r"const HUSH_ADMIN_API = '([^']+)';", open(os.path.join(R, 'assets/admin.js')).read()).group(1)
 
 # 1) published files: hash only, no plaintext password, no login fields on client pages
 tracked = subprocess.run(['git', 'ls-files'], cwd=R, capture_output=True, text=True).stdout.split()
@@ -42,14 +42,14 @@ def mock_api(route):
     hdr = {'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*'}
     if route.request.method == 'OPTIONS': return route.fulfill(status=204, headers=hdr)
     posts.append(json.loads(route.request.post_data))
-    route.fulfill(status=200, headers=hdr, content_type='application/json', body='{"success":"true"}')
+    route.fulfill(status=200, headers=hdr, content_type='application/json', body='{"ok":true,"commit":"abc","message":"admin: test"}')
 
 with sync_playwright() as p:
     br = p.chromium.launch(); errs = []
     def ctx_for(base):
         c = br.new_context(viewport={'width': 1280, 'height': 900})
-        c.route(re.compile(r'^(?!http://127\.0\.0\.1:8765/|https://hushgazer\.github\.io/|https://formsubmit\.co/).*'), lambda r: r.abort())
-        c.route(LIVE + '**', serve_local_as_live); c.route(FS, mock_api)
+        c.route(re.compile(r'^(?!http://127\.0\.0\.1:8765/|https://hushgazer\.github\.io/|https://formsubmit\.co/|https://hush-admin-publish\.hushgazer\.workers\.dev).*'), lambda r: r.abort())
+        c.route(LIVE + '**', serve_local_as_live); c.route(API, mock_api); c.route(API + '/**', mock_api)
         # pass the "Who are you?" gate as a client (the gate itself is tested in tools/test_who.py)
         # Pass the Who-are-you gate as Julius (password hash must match assets/who.js CLIENT_LOGIN_HASH).
         c.add_init_script("try{sessionStorage.setItem('hush-who','Julius');sessionStorage.setItem('hush-who-auth','d1747f0fe458f88539181706839080c16ec6441c7081570e61c172cb05be351e')}catch(e){}")
@@ -102,7 +102,7 @@ with sync_playwright() as p:
     c.close()
     print('PASS admin sign-in (wrong rejected, Hush ok), all 3 projects listed, local preview no email, sign out')
 
-    # 4) "live" origin: hide/unhide/delete send signed FormSubmit requests that admin_action.py accepts
+    # 4) "live" origin: hide/unhide/delete POST signed hush-admin/v1 JSON that admin_action.py accepts
     c, pg = ctx_for(LIVE)
     pg.goto(LIVE + 'admin/'); pg.fill('#admin-pass', PRIV['password']); pg.click('#login-btn')
     pg.wait_for_selector('#admin-bar'); pg.wait_for_selector('li[data-slug=lion] [data-act=hide]')
@@ -120,9 +120,9 @@ with sync_playwright() as p:
     pg.screenshot(path='preview-admin-pending.png')
     c.close()
     hide, dele = posts
-    assert hide['_subject'] == 'Hush admin: hide lion' and dele['_subject'] == 'Hush admin: delete kraken'
-    assert dele['_cc'] == 'hushmediacreations+picks@mail.grokbot.com' and dele['_captcha'] == 'false'
-    assert all('password' not in k.lower() and PRIV['password'] not in (v if k != 'payload' else json.loads(v[21:-19]).get('by','')+json.loads(v[21:-19])['sig']) for x in posts for k, v in x.items() if k not in ('_subject','_cc')) and PRIV['signKey'] not in json.dumps(posts)
+    assert hide['schema'] == 'hush-admin/v1' and hide['action'] == 'hide' and hide['slug'] == 'lion' and 'file' not in hide
+    assert dele['action'] == 'delete' and dele['slug'] == 'kraken' and '_subject' not in dele and '_cc' not in dele
+    assert PRIV['signKey'] not in json.dumps(posts) and PRIV['password'] not in json.dumps(posts)
     # verify with admin_action.py on a scratch copy of projects.json
     with tempfile.TemporaryDirectory() as td:
         for sub in ('tools', 'tools/private', 'projects'): os.makedirs(os.path.join(td, sub), exist_ok=True)
@@ -131,19 +131,19 @@ with sync_playwright() as p:
         shutil.copy(os.path.join(R, 'tools/private/admin.json'), os.path.join(td, 'tools/private'))
         shutil.copy(os.path.join(R, 'projects/projects.json'), os.path.join(td, 'projects'))
         os.makedirs(os.path.join(td, 'kraken')); os.makedirs(os.path.join(td, 'projects/kraken'))
-        def run(body, *extra):
-            fn = os.path.join(td, 'mail.txt'); open(fn, 'w').write('Subject: x\n\npayload: ' + body)
+        def run(payload, *extra):
+            fn = os.path.join(td, 'mail.txt'); open(fn, 'w').write('Subject: x\n\nHUSHADMIN_JSON_BEGIN ' + json.dumps(payload) + ' HUSHADMIN_JSON_END')
             return subprocess.run(['python3', os.path.join(td, 'tools/admin_action.py'), '--from-email', fn, *extra], capture_output=True, text=True)
-        r = run(hide['payload']); assert r.returncode == 0, r.stdout + r.stderr
-        r = run(hide['payload']); assert r.returncode == 2 and 'already applied' in r.stdout
-        forged = hide['payload'].replace('"slug":"lion"', '"slug":"lion-v3"')
+        r = run(hide); assert r.returncode == 0, r.stdout + r.stderr
+        r = run(hide); assert r.returncode == 2 and 'already applied' in r.stdout
+        forged = dict(hide); forged['slug'] = 'lion-v3'
         r = run(forged); assert r.returncode == 2 and 'bad signature' in r.stdout
-        r = run(dele['payload'], '--remove-files'); assert r.returncode == 0, r.stdout + r.stderr
+        r = run(dele, '--remove-files'); assert r.returncode == 0, r.stdout + r.stderr
         d = json.load(open(os.path.join(td, 'projects/projects.json')))
         assert [x for x in d['projects'] if x['slug'] == 'lion'][0]['hidden'] is True
         assert 'kraken' not in [x['slug'] for x in d['projects']]
         assert not os.path.exists(os.path.join(td, 'kraken')) and not os.path.exists(os.path.join(td, 'projects/kraken'))
-    print('PASS live admin: signed hide/delete emails, cancel = no send, admin_action.py applies valid, rejects replay + forgery')
+    print('PASS live admin: signed hide/delete posts, cancel = no send, admin_action.py applies valid, rejects replay + forgery')
 
     # 5) collage hide/show/delete: confirm required, signed email, admin_action applies to project.json
     posts.clear()
@@ -163,7 +163,7 @@ with sync_playwright() as p:
     file0 = pg.locator('.collage').first.get_attribute('data-file')
     pg.locator('.collage').first.locator('[data-act=hide-collage]').click()
     pg.wait_for_selector('.collage.adm-collage-hidden')
-    assert len(posts) == 1 and posts[0]['_subject'] == f'Hush admin: hide-collage lion {file0}'
+    assert len(posts) == 1 and posts[0]['action'] == 'hide-collage' and posts[0]['slug'] == 'lion' and posts[0]['file'] == file0
     hide_c = posts[0]
     pg.screenshot(path='preview-admin-collage.png')
     c.close()
@@ -176,10 +176,10 @@ with sync_playwright() as p:
         shutil.copy(os.path.join(R, 'projects/lion/project.json'), os.path.join(td, 'projects/lion'))
         # touch a fake image so delete-collage can remove it later
         open(os.path.join(td, 'projects/lion', file0), 'wb').write(b'PNG')
-        def run(body):
-            fn = os.path.join(td, 'mail.txt'); open(fn, 'w').write('Subject: x\n\npayload: ' + body)
+        def run(payload):
+            fn = os.path.join(td, 'mail.txt'); open(fn, 'w').write('Subject: x\n\nHUSHADMIN_JSON_BEGIN ' + json.dumps(payload) + ' HUSHADMIN_JSON_END')
             return subprocess.run(['python3', os.path.join(td, 'tools/admin_action.py'), '--from-email', fn], capture_output=True, text=True)
-        r = run(hide_c['payload']); assert r.returncode == 0, r.stdout + r.stderr
+        r = run(hide_c); assert r.returncode == 0, r.stdout + r.stderr
         cfg = json.load(open(os.path.join(td, 'projects/lion/project.json')))
         ent = next(x for x in cfg['collages'] if x['file'] == file0)
         assert ent.get('hidden') is True
@@ -191,7 +191,7 @@ with sync_playwright() as p:
         cfg2 = json.load(open(os.path.join(td, 'projects/lion/project.json')))
         assert file0 not in [x['file'] for x in cfg2['collages']]
         assert not os.path.exists(os.path.join(td, 'projects/lion', file0))
-    print('PASS collage admin: confirm cancel, signed hide-collage email, apply hide + delete-collage')
+    print('PASS collage admin: confirm cancel, signed hide-collage post, apply hide + delete-collage')
 
     print('errors:', errs); assert not errs
     print('ALL ADMIN TESTS PASSED')

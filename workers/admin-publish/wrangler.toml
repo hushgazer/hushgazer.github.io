@@ -1,0 +1,20 @@
+# Hush admin publisher. Secrets are NOT in this file.
+#   npx wrangler secret put ADMIN_SIGN_KEY
+#   npx wrangler secret put GITHUB_TOKEN
+# KV id is filled in after `npx wrangler kv namespace create NONCES`.
+
+name = "hush-admin-publish"
+account_id = "e45074e72a87f80d10efcf0eb877b88c"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+
+[vars]
+GITHUB_REPO = "hushgazer/hushgazer.github.io"
+GITHUB_BRANCH = "main"
+
+[[kv_namespaces]]
+binding = "NONCES"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+
+# Optional custom hostname. Also add that origin to connect-src.
+# routes = [{ pattern = "admin-publish.example.com", custom_domain = true }]

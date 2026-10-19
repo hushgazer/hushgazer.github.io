@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
-"""Apply a Hush admin action to the site. Used by the picks routine for
-"Hush admin: <action> …" emails, or by hand.
+"""Apply a Hush admin action to the site.
+
+Live /admin/ Hide, Unhide, and Delete now POST to the Cloudflare Worker
+(workers/admin-publish/). This script stays the manual CLI, and --from-email
+still applies any leftover "Hush admin:" emails.
 
 Project-level (home page):
   python3 tools/admin_action.py hide|unhide <slug>

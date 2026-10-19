@@ -1,21 +1,17 @@
 /* Hush Media Creations: admin bar + per-collage Hide / Show / Delete for Hush only.
    Does nothing at all unless this browser tab signed in on /admin/ (sessionStorage).
    Client pages never show a login: the sign-in form lives only on the unlinked /admin/ page.
-   A static site can't edit itself, so each action is emailed (FormSubmit, same inbox as the
-   picks) with an HMAC signature; the picks routine verifies it with tools/admin_action.py,
-   updates project.json / projects.json, commits, pushes.
+   A static site can't edit itself. Each action POSTs an HMAC-signed hush-admin/v1 payload
+   to our Cloudflare Worker (HUSH_ADMIN_API), which commits to this GitHub repo. GitHub
+   Pages then deploys as usual. Client picks still use FormSubmit in assets/project.js.
    OPTIMISTIC UI: this tab flips to Hidden / Shown / Removed the moment you confirm — before
-   the email round-trip — so Hide never feels stuck waiting on publish. The live public site
-   updates after admin_action.py --push + Pages.
+   the Worker responds. The live public site updates after GitHub Pages (usually ~1–2 min).
    Project pages: hide/delete individual collages (not the whole project). Home still has
    project-level Hide/Delete. Hide and Delete always ask for confirmation first. */
 (function () {
   'use strict';
-  // ==== must match FORM_TARGET / FORM_CC in assets/project.js ====
-  var FORM_TARGET = 'aae697c61d8971216e3ef477e0b2a4cf';
-  var FORM_CC = 'hushmediacreations+picks@mail.grokbot.com';
-  // ================================================================
-  var FORM_ENDPOINT = 'https://formsubmit.co/ajax/' + FORM_TARGET;
+  // Admin Hide/Unhide/Delete only. Client picks stay on FormSubmit in assets/project.js.
+  const HUSH_ADMIN_API = 'https://hush-admin-publish.hushgazer.workers.dev';
   var LOCAL = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
   var PKEY = 'hush-admin-pending';
   var active = false, key = '', who = 'Hush';
@@ -87,19 +83,10 @@
     return sign(parts.join('|')).then(function (sig) {
       var pl = { schema: 'hush-admin/v1', action: action, slug: slug, title: title || slug, by: who, at: at, nonce: nonce, sig: sig };
       if (isCollage) pl.file = file;
-      var subj = 'Hush admin: ' + action + ' ' + slug + (isCollage ? (' ' + file) : '');
-      var body = {
-        _subject: subj, _template: 'box', _captcha: 'false', _honey: '',
-        action: action, project: slug, collage: file || undefined, requested_at: at,
-        payload: 'HUSHADMIN_JSON_BEGIN ' + JSON.stringify(pl) + ' HUSHADMIN_JSON_END'
-      };
-      if (FORM_CC) body._cc = FORM_CC;
-      return fetch(FORM_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(body) })
+      return fetch(HUSH_ADMIN_API, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(pl) })
         .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) {
-          // Only treat as published-request if FormSubmit clearly accepted it.
-          var ok = r.ok && j && (j.success === true || j.success === 'true' || String(j.success).toLowerCase() === 'true');
-          if (!ok) throw new Error((j && j.message) || ('FormSubmit rejected or failed (HTTP ' + r.status + '). Not published.'));
-          return { local: false };
+          if (!r.ok || !j || j.ok !== true) throw new Error((j && j.error) || ('Admin publish failed (HTTP ' + r.status + '). Not published.'));
+          return { local: false, commit: j.commit || '', message: j.message || '' };
         }); });
     });
   }
@@ -131,24 +118,21 @@
     function act(action) {
       if (action === 'hide' && !window.confirm('Hide \u201c' + title + '\u201d?\n\nClients will see it as not available until you Unhide. Are you sure?')) return;
       if (action === 'delete' && !window.confirm('Delete \u201c' + title + '\u201d permanently?\n\nClients lose access right away and the project is removed from the site at the next publish. This can\u2019t be undone from here.')) return;
-      // Optimistic: flip this tab instantly, then email the signed request in the background.
+      // Optimistic: flip this tab instantly, then publish the signed request in the background.
       setPending(slug, action);
       onDone();
-      setMsg(msg, action === 'delete' ? ('Removing \u201c' + title + '\u201d\u2026 sending publish request')
-        : action === 'hide' ? ('Hiding \u201c' + title + '\u201d\u2026 sending publish request')
-        : ('Showing \u201c' + title + '\u201d\u2026 sending publish request'), false);
+      setMsg(msg, (action === 'delete' ? 'Removing' : action === 'hide' ? 'Hiding' : 'Showing') + ' \u201c' + title + '\u201d\u2026', false);
       send(action, slug, title).then(function (r) {
         if (r.local) {
           setMsg(msg, 'Local preview: UI updated here. To publish run: ' + r.cmd, false);
           return;
         }
-        setMsg(msg, action === 'delete' ? ('Request accepted for \u201c' + title + '\u201d. Live site updates after publish (usually a few minutes). If it does not change, tell me — do not assume it is live.')
-          : action === 'hide' ? ('Request accepted: hide \u201c' + title + '\u201d. Live site updates after publish. If it stays public, tell me.')
-          : ('Request accepted: show \u201c' + title + '\u201d. Live site updates after publish. If it stays hidden, tell me.'), false);
+        var done = action === 'delete' ? 'Removed' : action === 'hide' ? 'Hidden' : 'Showing';
+        setMsg(msg, done + ' \u201c' + title + '\u201d. The live site updates after GitHub Pages (usually ~1\u20132 min).', false);
       }, function (e) {
         setPending(slug, null);
         onDone();
-        setMsg(msg, 'NOT PUBLISHED — could not send (' + (e && e.message || 'network error') + '). Reverted. Try again.', true);
+        setMsg(msg, 'NOT PUBLISHED — could not publish (' + (e && e.message || 'network error') + '). Reverted. Try again.', true);
       });
     }
     var hidden = st.hidden;
@@ -285,12 +269,12 @@
         function act(action) {
           if (action === 'hide-collage' && !window.confirm('Hide this collage from Julius and Adam?\n\nAre you sure? You can Show it again later.')) return;
           if (action === 'delete-collage' && !window.confirm('Delete this collage permanently?\n\n\u201c' + label + '\u201d (' + file + ') will be removed from the site. This can\u2019t be undone from here.')) return;
-          // Pending UI only until FormSubmit accepts. Delete does NOT remove the collage until then.
+          // Pending UI only until the Worker accepts. Delete does NOT remove the collage until then.
           setPending(key, action);
           if (onChange) onChange(action, { local: false, optimistic: true });
           draw();
           setMsg(msg, (action === 'delete-collage' ? 'Deleting' : action === 'hide-collage' ? 'Hiding' : 'Showing')
-            + ' \u201c' + label + '\u201d\u2026 sending publish request', false);
+            + ' \u201c' + label + '\u201d\u2026', false);
           send(action, slug, label, { file: file }).then(function (r) {
             if (r.local) {
               if (onChange && action === 'delete-collage') onChange(action, { confirmed: true, local: true });
@@ -298,16 +282,15 @@
               draw();
               return;
             }
-            // FormSubmit accepted — now safe to drop deleted collage from this tab.
             if (onChange && action === 'delete-collage') onChange(action, { confirmed: true });
-            setMsg(msg, (action === 'delete-collage' ? 'Delete request accepted for' : action === 'hide-collage' ? 'Hide request accepted for' : 'Show request accepted for')
-              + ' \u201c' + label + '\u201d. Live site updates after publish. If the live page does not change, tell me — do not assume it is live.', false);
+            var done = action === 'delete-collage' ? 'Deleted' : action === 'hide-collage' ? 'Hidden' : 'Shown';
+            setMsg(msg, done + ' \u201c' + label + '\u201d. The live site updates after GitHub Pages (usually ~1\u20132 min).', false);
             draw();
           }, function (e) {
             setPending(key, null);
             if (onChange) onChange('revert-' + action, { error: true });
             draw();
-            setMsg(msg, 'NOT PUBLISHED — could not send (' + (e && e.message || 'network error') + '). Reverted. Try again.', true);
+            setMsg(msg, 'NOT PUBLISHED — could not publish (' + (e && e.message || 'network error') + '). Reverted. Try again.', true);
           });
         }
         var hidden = st.hidden;

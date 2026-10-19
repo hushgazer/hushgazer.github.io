@@ -115,45 +115,34 @@ no passwords, no trackers, no external scripts. Picks are emailed through FormSu
 * **Project pages** do **not** hide/delete the whole project from the admin bar. Instead each
   collage section shows **Hide collage** / **Show collage** / **Delete collage**. Hide and
   Delete always ask for confirmation first (Delete: "Delete this collage permanently?").
-  Hidden collages vanish for Julius/Adam after publish; admin still sees them greyed with
-  **Show collage**. The UI updates immediately (optimistic); the live site updates after the
-  automation applies + pushes (usually a few minutes).
+  Hidden collages vanish for Julius/Adam after GitHub Pages rebuilds; admin still sees them
+  greyed with **Show collage**. The UI updates immediately (optimistic); the live site
+  follows about 1–2 minutes later.
 * **Hidden project** (`"hidden": true` in `projects/projects.json`): left off the public home
   page; the project URL shows "This project isn't available right now" to anyone not signed
   in. **Hidden collage** (`"hidden": true` on a collage entry in `projects/<slug>/project.json`):
   omitted for clients; admin still sees it greyed.
-* **Optimistic UI**: Hide / Unhide flip this tab immediately; **Delete collage** only
-  greys out until FormSubmit accepts, then removes it from the tab. On send failure the
-  tab reverts and shows **NOT PUBLISHED**. The signed FormSubmit request still goes out
-  for audit; `admin_action.py --from-email` always pushes so Pages updates.
-
-* **Publish reliability:** Hide/Delete only stay “done” in the admin UI after FormSubmit
-  **accepts** the request. If send fails, the UI reverts and shows **NOT PUBLISHED**.
-  `--from-email` always `--push`es (unless `--no-push`) so applied actions hit GitHub Pages.
-  FormSubmit can still accept a request while email delivery is delayed (GitHub/webhook
-  outages) — if live does not change within a few minutes, tell the bot; do not assume
-  the collage is gone. No Lion delete-collage emails were found for the lost deletes.
-* Each button click emails a signed request through FormSubmit (same `FORM_TARGET` as the
-  picks, copied via `_cc` to the bot inbox). Subjects:
-  - project: `Hush admin: <hide|unhide|delete> <slug>`
-  - collage: `Hush admin: <hide-collage|show-collage|delete-collage> <slug> <file>`
-  Payload between `HUSHADMIN_JSON_BEGIN` / `HUSHADMIN_JSON_END`:
-  `{"schema":"hush-admin/v1","action","slug","file?","title","by","at","nonce","sig"}` where
-  project `sig = HMAC-SHA256(signKey, "hush-admin/v1|action|slug|at|nonce")` and collage
-  `sig = HMAC-SHA256(signKey, "hush-admin/v1|action|slug|file|at|nonce")`.
-* **Picks routine**: for a "Hush admin:" email, save the email text and run
-  `python3 tools/admin_action.py --from-email mail.txt --push` (add `--remove-files` for
-  project delete). It rejects bad signatures, replays and requests older than 7 days
-  (exit code 2). `--push` commits and pushes so GitHub Pages updates.
-* By hand / local preview (the local admin bar never emails; it shows the command):
+* **Optimistic UI**: Hide / Unhide flip this tab immediately; **Delete collage** stays
+  pending until the Worker returns `{ok:true}`, then drops from the tab. If `ok` is not
+  true, the tab reverts and shows **NOT PUBLISHED**. The live site updates after GitHub
+  Pages rebuilds the Worker’s commit (usually ~1–2 min).
+* Each button POSTs the signed `hush-admin/v1` object (not a FormSubmit wrapper) to
+  `HUSH_ADMIN_API` in `assets/admin.js`
+  (`https://hush-admin-publish.hushgazer.workers.dev`). Client picks still use FormSubmit.
+  Sign string: `hush-admin/v1|action|slug|at|nonce`, with `|file` before `|at` for collage
+  actions. Worker commit subject: `admin: <action> <slug> [<file>]`.
+* Leftover "Hush admin:" emails, if any, still go through
+  `python3 tools/admin_action.py --from-email mail.txt` (it verifies the same HMAC).
+* By hand / local preview (the local admin bar does not call the Worker; it shows the command):
   `python3 tools/admin_action.py hide|unhide <slug>`,
   `python3 tools/admin_action.py delete <slug> [--remove-files]`,
   `python3 tools/admin_action.py hide-collage|show-collage|delete-collage <slug> <file> [--push]`.
 * Caveat: this sign-in is a convenience gate (the hash is public and a short password can be
-  guessed). Nothing changes on the site unless `admin_action.py` verifies the signature, so a
-  stronger password makes forged requests harder. Hidden projects' slugs are still listed in
-  the public `projects.json`.
-* Test: `python3 tools/test_admin.py` (server on :8765; FormSubmit mocked).
+  guessed). Nothing changes on the site unless the Worker (or `admin_action.py`) verifies
+  the signature, so a stronger password makes forged requests harder. Hidden projects'
+  slugs are still listed in the public `projects.json`.
+* Test: `node --test workers/admin-publish/test/admin-publish.test.mjs` and
+  `python3 tools/test_admin.py` (server on :8765; Worker mocked).
 
 
 ## 8. Display WebP (automatic — faster client loads)
