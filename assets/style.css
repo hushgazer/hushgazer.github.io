@@ -145,3 +145,14 @@ select{font:inherit;color:var(--text);background:#0b0c10;border:1px solid var(--
 .admin-list li a{border:0;background:none}
 .admin-list li .adm-actions{padding:0 18px}
 .admin-list li.adm-is-hidden{opacity:.8;border-style:dashed}
+/* home "Who are you?" identity picker (index.html only) */
+body.who-open{overflow:hidden}
+.who-overlay{position:fixed;inset:0;z-index:100;background:rgba(8,9,12,.82);display:flex;align-items:center;justify-content:center;padding:20px}
+.who-card{width:min(420px,100%);background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:22px 22px 18px;box-shadow:0 18px 50px rgba(0,0,0,.45)}
+.who-card h2{margin:0 0 6px;font-size:1.35rem;color:var(--gold)}
+.who-lead{margin:0 0 16px;color:var(--muted)}
+.who-choices{display:grid;gap:10px}
+.who-choice{width:100%}
+.who-hush{display:grid;gap:10px;margin-top:4px}
+.who-hush-actions{display:flex;gap:10px;flex-wrap:wrap}
+.who-note{margin:14px 0 0;color:var(--muted);font-size:.92rem}
