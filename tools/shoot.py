@@ -156,7 +156,7 @@ with sync_playwright() as p:
     pg.goto(B + 'demo/'); pass_who(pg); pg.wait_for_selector('#collage-3 .opt')
     pg.click('#collage-1 .opt[data-opt="2"]'); pg.click('#collage-1 .opt[data-opt="5"]')
     pg.click('#collage-2 .opt[data-opt="3"]'); pg.click('#collage-3 .opt[data-opt="7"]')
-    assert pg.text_content('#lineup .slot:nth-child(1) figcaption') == 'C1 #2 #5'
+    assert 'Preview 1' in pg.text_content('#lineup') and pg.locator('#lineup .preview-card').count() >= 2
     assert pg.text_content('#bar-count') == '3/3 collages · 4 picks'
     pg.evaluate("document.getElementById('collage-1').scrollIntoView({block:'center'})"); pg.wait_for_timeout(250)
     pg.screenshot(path='preview-multi-collage.png')
@@ -190,26 +190,27 @@ with sync_playwright() as p:
     ext.clear()
     ctx = new_ctx(viewport={'width': 1280, 'height': 900}, accept_downloads=True); pg = ctx.new_page(); watch(pg)
     pg.route('**/assets/project.js*', mock_js); pg.route(FS, mock_api)
-    pg.goto(B + 'demo/'); pass_who(pg); pg.wait_for_selector('#lineup .slot')
-    assert pg.locator('#lineup .slot').count() == 3 and pg.locator('#lineup .slot.empty').count() == 3
-    assert 'not picked yet' in pg.text_content('#lineup') and pg.is_disabled('#lineup-download')
+    pg.goto(B + 'demo/'); pass_who(pg); pg.wait_for_selector('#lineup-strip')
+    assert pg.locator('#lineup .preview-card').count() == 0
+    assert 'appear here in order' in pg.text_content('#lineup') and pg.is_disabled('#lineup-download')
     order = pg.evaluate("[...document.querySelectorAll('#collages, #lineup, #summary')].map(e => e.id)")
     assert order == ['collages', 'lineup', 'summary'], order
     pg.click('#collage-1 .opt[data-opt="5"]'); pg.click('#collage-3 .opt[data-opt="8"]')
-    caps = pg.eval_on_selector_all('#lineup figcaption', 'e => e.map(x => x.textContent)')
-    assert caps == ['C1 #5', 'C2', 'C3 #8'], caps
+    caps = pg.eval_on_selector_all('#lineup .preview-card figcaption strong', 'e => e.map(x => x.textContent)')
+    assert caps == ['Preview 1', 'Preview 2'], caps
     cfg = json.load(open('projects/demo/project.json'))
     c1 = Image.open('projects/demo/collage-1.png'); cols = cfg['collages'][0]['columns']
     w5 = round(cols[5] / cols[-1] * c1.width) - round(cols[4] / cols[-1] * c1.width)
-    dims = pg.eval_on_selector('#lineup .slot:nth-child(1) canvas', 'c => [c.width, c.height]')
+    dims = pg.eval_on_selector('#lineup .preview-card canvas', 'c => [c.width, c.height]')
     top = cfg['collages'][0].get('cropTop', 0)
     assert dims == [w5, c1.height - top], (dims, w5, c1.height, top)   # native pixels, no downscaling; header strip trimmed
-    # multi-select: add #2 alongside #5; caption becomes "C1 #2 #5"; tap #5 again to unpick
+    # multi-select: add #2 alongside #5 → Preview 3; tap #5 again to unpick (removes Preview 1, renumbers)
     pg.click('#collage-1 .opt[data-opt="2"]')
-    assert pg.text_content('#lineup .slot:nth-child(1) figcaption') == 'C1 #2 #5'
-    assert pg.locator('#lineup .slot:nth-child(1) canvas').count() == 2
-    pg.click('#collage-1 .opt[data-opt="5"]')  # deselect 5 → leave #2
-    assert pg.text_content('#lineup .slot:nth-child(1) figcaption') == 'C1 #2'
+    assert pg.locator('#lineup .preview-card').count() == 3
+    assert pg.eval_on_selector_all('#lineup .preview-card figcaption strong', 'e => e.map(x => x.textContent)') == ['Preview 1', 'Preview 2', 'Preview 3']
+    pg.click('#collage-1 .opt[data-opt="5"]')  # deselect 5 → leave opt 8 + opt 2
+    assert pg.locator('#lineup .preview-card').count() == 2
+    assert 'Preview 1' in pg.text_content('#lineup')
     pg.click('#collage-2 .opt[data-opt="3"]')
     with pg.expect_download() as dl_info: pg.click('#lineup-download')
     dl = dl_info.value; dl.save_as('tools/out/lineup-demo.png')
@@ -218,7 +219,7 @@ with sync_playwright() as p:
     pg.evaluate("document.getElementById('lineup').scrollIntoView()"); pg.wait_for_timeout(200)
     pg.screenshot(path='preview-lineup.png')
     assert ext == [], f'lineup made external requests: {ext}'
-    print('PASS final lineup: live, native-res crops', dims, ', empty slots, local PNG download', im.size)
+    print('PASS final lineup: live, native-res crops', dims, ', ordered preview, local PNG download', im.size)
     ctx.close()
 
     # 4b) name is required: all picked, empty name -> inline error, no POST

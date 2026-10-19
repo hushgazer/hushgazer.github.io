@@ -18,6 +18,7 @@
   var root = app.getAttribute('data-root') || './';
   var slug = app.getAttribute('data-slug') || new URLSearchParams(location.search).get('p') || '';
   var picks = [];      // picks[i] = sorted array of option numbers (1-based); [] = none
+  var lineupOrder = []; // [{c, o}] selection order / drag order for Final lineup preview
   var collages = [];   // config
   var imgs = [];       // loaded <img> elements
   var project = null;
@@ -124,7 +125,7 @@
 
   function save() {
     try {
-      localStorage.setItem(storeKey, JSON.stringify(picks));
+      localStorage.setItem(storeKey, JSON.stringify({ picks: picks, lineup: lineupOrder }));
       if (isAdvisor()) localStorage.setItem(storeKey + ':notes', JSON.stringify({ notes: notes, overall: document.getElementById('overall').value }));
     } catch (e) {}
   }
@@ -136,10 +137,48 @@
     if (typeof v === 'number' && v >= 1) return [v];
     return [];
   }
+  function lineupKey(e) { return e.c + ':' + e.o; }
+  function rebuildLineupFromPicks() {
+    var out = [];
+    picks.forEach(function (sel, i) {
+      (sel || []).forEach(function (o) { out.push({ c: i, o: o }); });
+    });
+    return out;
+  }
+  function normalizeLineup(raw) {
+    if (!Array.isArray(raw)) return rebuildLineupFromPicks();
+    var seen = {}, out = [];
+    raw.forEach(function (e) {
+      if (!e) return;
+      var c = Number(e.c), o = Number(e.o);
+      if (!(c >= 0 && c < collages.length && o >= 1)) return;
+      if ((picks[c] || []).indexOf(o) < 0) return;
+      var k = c + ':' + o;
+      if (seen[k]) return;
+      seen[k] = 1; out.push({ c: c, o: o });
+    });
+    // Append any picks missing from saved order (e.g. after collage delete)
+    picks.forEach(function (sel, i) {
+      (sel || []).forEach(function (o) {
+        var k = i + ':' + o;
+        if (!seen[k]) { seen[k] = 1; out.push({ c: i, o: o }); }
+      });
+    });
+    return out;
+  }
   function load() {
     try {
-      var p = JSON.parse(localStorage.getItem(storeKey));
-      if (Array.isArray(p) && p.length === collages.length) picks = p.map(normalizeSlot);
+      var raw = JSON.parse(localStorage.getItem(storeKey));
+      if (Array.isArray(raw) && raw.length === collages.length) {
+        // legacy: picks-only array
+        picks = raw.map(normalizeSlot);
+        lineupOrder = rebuildLineupFromPicks();
+      } else if (raw && Array.isArray(raw.picks)) {
+        picks = raw.picks.map(normalizeSlot);
+        while (picks.length < collages.length) picks.push([]);
+        picks = picks.slice(0, collages.length);
+        lineupOrder = normalizeLineup(raw.lineup);
+      }
     } catch (e) {}
     if (isAdvisor()) {
       try {
@@ -163,15 +202,21 @@
     });
     sec.querySelectorAll('.nums span').forEach(function (s, k) { s.classList.toggle('sel', sel.indexOf(k + 1) >= 0); });
     var st = sec.querySelector('.status');
-    st.textContent = sel.length ? ('Picked: ' + fmtOpts(sel) + (sel.length > 1 ? ' · tap again to unpick' : ' · tap again to unpick')) : 'Not picked yet · tap to pick (as many as you want)';
+    st.textContent = sel.length ? ('Picked: ' + fmtOpts(sel) + ' · tap again to unpick') : 'Not picked yet · tap to pick (as many as you want)';
     st.classList.toggle('done', sel.length > 0);
   }
   // Multi-select: tap to pick, tap again to unpick. Any number per collage.
+  // New picks append to lineupOrder (Preview 1, 2, …); unpick removes that card.
   function togglePick(i, opt) {
     var cur = (picks[i] || []).slice();
     var idx = cur.indexOf(opt);
-    if (idx >= 0) cur.splice(idx, 1);
-    else cur.push(opt);
+    if (idx >= 0) {
+      cur.splice(idx, 1);
+      lineupOrder = lineupOrder.filter(function (e) { return !(e.c === i && e.o === opt); });
+    } else {
+      cur.push(opt);
+      lineupOrder.push({ c: i, o: opt });
+    }
     picks[i] = cur.sort(function (a, b) { return a - b; });
     save();
     syncCollageUI(i);
@@ -179,6 +224,7 @@
   }
   function setPick(i, opts) {   // restore from storage: opts = number | number[] | null
     picks[i] = normalizeSlot(opts);
+    lineupOrder = normalizeLineup(lineupOrder);
     save();
     syncCollageUI(i);
   }
@@ -233,45 +279,149 @@
       var dl = el('button', { type: 'button', class: 'btn btn-secondary', id: 'lineup-download' }, 'Download lineup');
       dl.addEventListener('click', downloadLineup);
       hd.appendChild(dl); sec.appendChild(hd);
-      sec.appendChild(el('p', { class: 'privacy' }, 'Your picks side by side, at full quality. Download saves a PNG to your device; nothing is uploaded.'));
-      sec.appendChild(el('div', { class: 'lineup-strip', id: 'lineup-strip' }));
+      sec.appendChild(el('p', { class: 'privacy' }, 'Your picks in the order you selected them. Drag a card to reorder. Download saves a PNG to your device; nothing is uploaded.'));
+      sec.appendChild(el('div', { class: 'lineup-strip', id: 'lineup-strip', role: 'list' }));
       app.insertBefore(sec, document.getElementById('opinions') || document.getElementById('summary'));
     }
     var strip = document.getElementById('lineup-strip'); strip.textContent = '';
-    var any = false;
-    collages.forEach(function (c, i) {
-      var sel = picks[i] || [];
-      if (!sel.length) {
-        var empty = el('figure', { class: 'slot empty' });
-        empty.appendChild(el('span', { class: 'slot-ph' }, 'not picked yet'));
-        empty.appendChild(el('figcaption', null, 'C' + (i + 1)));
-        strip.appendChild(empty);
-        return;
-      }
-      // One slot with every selected character + caption "C1 #2 #5"
-      var fig = el('figure', { class: 'slot multi' });
-      var row = el('div', { class: 'slot-row' });
-      sel.forEach(function (opt) {
-        var cv = nativeCrop(i, opt);
-        if (!cv) return;
-        any = true;
-        cv.setAttribute('role', 'img');
-        cv.setAttribute('aria-label', 'Collage ' + (i + 1) + ', option ' + opt);
-        row.appendChild(cv);
+    if (!lineupOrder.length) {
+      strip.appendChild(el('p', { class: 'lineup-empty', id: 'lineup-empty' }, 'Tap characters above — they’ll appear here in order.'));
+      document.getElementById('lineup-download').disabled = true;
+      return;
+    }
+    lineupOrder.forEach(function (e, idx) {
+      var fig = el('figure', {
+        class: 'preview-card',
+        role: 'listitem',
+        'data-idx': String(idx),
+        'data-c': String(e.c),
+        'data-o': String(e.o),
+        tabindex: '0',
+        'aria-grabbed': 'false',
+        'aria-label': 'Preview ' + (idx + 1) + ', Collage ' + (e.c + 1) + ' option ' + e.o + '. Drag to reorder.'
       });
-      fig.appendChild(row);
-      fig.appendChild(el('figcaption', null, 'C' + (i + 1) + ' ' + fmtOpts(sel)));
+      var badge = el('span', { class: 'preview-badge', 'aria-hidden': 'true' }, '#' + (idx + 1));
+      fig.appendChild(badge);
+      var grip = el('span', { class: 'preview-grip', 'aria-hidden': 'true' }, '⠿');
+      fig.appendChild(grip);
+      var cv = nativeCrop(e.c, e.o) || cropCanvas(e.c, e.o, 220);
+      if (cv) {
+        cv.setAttribute('role', 'img');
+        cv.setAttribute('aria-label', 'Collage ' + (e.c + 1) + ', option ' + e.o);
+        fig.appendChild(cv);
+      }
+      var cap = el('figcaption');
+      cap.appendChild(el('strong', null, 'Preview ' + (idx + 1)));
+      cap.appendChild(el('span', { class: 'preview-ref' }, 'Collage ' + (e.c + 1) + ' · option ' + e.o));
+      fig.appendChild(cap);
+      bindPreviewDrag(fig, idx);
       strip.appendChild(fig);
     });
-    document.getElementById('lineup-download').disabled = !any;
+    document.getElementById('lineup-download').disabled = false;
+  }
+
+  // Pointer-based drag (mouse + touch) to reorder preview cards.
+  var dragState = null;
+  function bindPreviewDrag(fig, idx) {
+    fig.addEventListener('pointerdown', function (ev) {
+      if (ev.button != null && ev.button !== 0) return;
+      if (ev.target.closest && ev.target.closest('a,button')) return;
+      ev.preventDefault();
+      startPreviewDrag(fig, idx, ev);
+    });
+    fig.addEventListener('keydown', function (ev) {
+      if (ev.key === 'ArrowLeft' || ev.key === 'ArrowUp') {
+        ev.preventDefault(); movePreview(idx, idx - 1);
+      } else if (ev.key === 'ArrowRight' || ev.key === 'ArrowDown') {
+        ev.preventDefault(); movePreview(idx, idx + 1);
+      }
+    });
+  }
+  function startPreviewDrag(fig, fromIdx, ev) {
+    var strip = document.getElementById('lineup-strip');
+    var rect = fig.getBoundingClientRect();
+    dragState = {
+      from: fromIdx, over: fromIdx, fig: fig,
+      ox: ev.clientX - rect.left, oy: ev.clientY - rect.top,
+      w: rect.width, h: rect.height,
+      ghost: null
+    };
+    fig.classList.add('is-dragging');
+    fig.setAttribute('aria-grabbed', 'true');
+    document.body.classList.add('lineup-dragging');
+    try { fig.setPointerCapture(ev.pointerId); } catch (e) {}
+    var ghost = fig.cloneNode(true);
+    ghost.classList.add('preview-ghost'); ghost.removeAttribute('data-idx');
+    ghost.style.width = rect.width + 'px';
+    ghost.style.height = rect.height + 'px';
+    ghost.style.left = (ev.clientX - dragState.ox) + 'px';
+    ghost.style.top = (ev.clientY - dragState.oy) + 'px';
+    // re-draw canvases into ghost (clone is blank)
+    var srcCvs = fig.querySelectorAll('canvas');
+    var dstCvs = ghost.querySelectorAll('canvas');
+    for (var i = 0; i < srcCvs.length; i++) {
+      dstCvs[i].width = srcCvs[i].width; dstCvs[i].height = srcCvs[i].height;
+      dstCvs[i].getContext('2d').drawImage(srcCvs[i], 0, 0);
+    }
+    document.body.appendChild(ghost);
+    dragState.ghost = ghost;
+    function onMove(e) {
+      if (!dragState) return;
+      e.preventDefault();
+      ghost.style.left = (e.clientX - dragState.ox) + 'px';
+      ghost.style.top = (e.clientY - dragState.oy) + 'px';
+      var cx = e.clientX;
+      var others = Array.prototype.slice.call(strip.querySelectorAll('.preview-card:not(.is-dragging)'));
+      var insertAt = others.length;
+      for (var k = 0; k < others.length; k++) {
+        var rr = others[k].getBoundingClientRect();
+        if (cx < rr.left + rr.width / 2) { insertAt = k; break; }
+      }
+      if (insertAt !== dragState.over) {
+        dragState.over = insertAt;
+        strip.querySelectorAll('.preview-card').forEach(function (c) { c.classList.remove('drop-before', 'drop-after'); });
+        if (others[insertAt]) others[insertAt].classList.add('drop-before');
+        else if (others.length) others[others.length - 1].classList.add('drop-after');
+      }
+    }
+    function onUp(e) {
+      if (!dragState) return;
+      try { fig.releasePointerCapture(ev.pointerId); } catch (err) {}
+      fig.removeEventListener('pointermove', onMove);
+      fig.removeEventListener('pointerup', onUp);
+      fig.removeEventListener('pointercancel', onUp);
+      var insertAt = dragState.over;
+      var from = dragState.from;
+      if (dragState.ghost) dragState.ghost.remove();
+      fig.classList.remove('is-dragging');
+      fig.setAttribute('aria-grabbed', 'false');
+      document.body.classList.remove('lineup-dragging');
+      strip.querySelectorAll('.preview-card').forEach(function (c) { c.classList.remove('drop-before', 'drop-after'); });
+      dragState = null;
+      if (insertAt != null) {
+        var item = lineupOrder.splice(from, 1)[0];
+        if (insertAt > lineupOrder.length) insertAt = lineupOrder.length;
+        lineupOrder.splice(insertAt, 0, item);
+        save();
+      }
+      renderSummary();
+    }
+    fig.addEventListener('pointermove', onMove);
+    fig.addEventListener('pointerup', onUp);
+    fig.addEventListener('pointercancel', onUp);
+  }
+  function movePreview(from, to) {
+    if (from < 0 || to < 0 || from >= lineupOrder.length || to >= lineupOrder.length || from === to) return;
+    var item = lineupOrder.splice(from, 1)[0];
+    lineupOrder.splice(to, 0, item);
+    save();
+    renderSummary();
   }
   function downloadLineup() {
     var parts = [];
-    collages.forEach(function (c, i) {
-      (picks[i] || []).forEach(function (opt) {
-        var cv = nativeCrop(i, opt);
-        if (cv) parts.push({ cv: cv, label: 'C' + (i + 1) + ' #' + opt });
-      });
+    lineupOrder.forEach(function (e, idx) {
+      var cv = nativeCrop(e.c, e.o);
+      if (cv) parts.push({ cv: cv, label: '#' + (idx + 1) + '  C' + (e.c + 1) + ' #' + e.o });
     });
     if (!parts.length) return;
     var pad = 24, lab = 64, maxH = Math.max.apply(null, parts.map(function (p) { return p.cv.height; }));
@@ -282,8 +432,8 @@
     g.font = 'bold 34px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'top'; g.fillStyle = '#ecebf2';
     var x = pad;
     parts.forEach(function (p) {
-      g.fillStyle = '#ffffff'; g.fillRect(x, pad + (maxH - p.cv.height), p.cv.width, p.cv.height);  // white behind transparent collages
-      g.drawImage(p.cv, x, pad + (maxH - p.cv.height));      // 1:1, no resampling
+      g.fillStyle = '#ffffff'; g.fillRect(x, pad + (maxH - p.cv.height), p.cv.width, p.cv.height);
+      g.drawImage(p.cv, x, pad + (maxH - p.cv.height));
       g.fillStyle = '#ecebf2';
       g.fillText(p.label, x + p.cv.width / 2, pad + maxH + 14);
       x += p.cv.width + pad;
@@ -348,6 +498,9 @@
             picks.splice(idx, 1);
             imgs.splice(idx, 1);
             notes.splice(idx, 1);
+            lineupOrder = lineupOrder.filter(function (e) { return e.c !== idx; })
+              .map(function (e) { return { c: e.c > idx ? e.c - 1 : e.c, o: e.o }; });
+            save();
           }
           sec.remove();
           // Re-number remaining section ids/labels for this tab only.
@@ -405,33 +558,38 @@
   function renderSummary() {
     var list = document.getElementById('picks'), bar = document.getElementById('bar-thumbs');
     list.textContent = ''; bar.textContent = '';
-    var done = 0, totalPicks = 0;
-    collages.forEach(function (c, i) {
-      var label = c.label || ('Collage ' + (i + 1)), sel = picks[i] || [];
-      var li = el('li', sel.length ? null : { class: 'missing' });
-      var a = el('a', { href: '#collage-' + (i + 1) });
-      var ba = el('a', { href: '#collage-' + (i + 1), title: label + (sel.length ? ': ' + fmtOpts(sel) : ': not picked') });
-      if (sel.length) {
-        done++;
-        totalPicks += sel.length;
-        sel.forEach(function (opt) { a.appendChild(cropCanvas(i, opt, 150)); });
-        a.appendChild(document.createTextNode(label + ': ' + fmtOpts(sel)));
-        sel.forEach(function (opt) { ba.appendChild(cropCanvas(i, opt, 60)); });
-      } else {
-        a.appendChild(el('span', { class: 'ph', 'aria-hidden': 'true' }, '?'));
-        a.appendChild(document.createTextNode(label + ': not picked yet'));
-        ba.appendChild(el('span', { class: 'ph' }, '?'));
-      }
-      ba.appendChild(document.createTextNode('C' + (i + 1)));
-      li.appendChild(a); list.appendChild(li); bar.appendChild(ba);
-    });
+    var done = 0, totalPicks = lineupOrder.length;
+    collages.forEach(function (c, i) { if ((picks[i] || []).length) done++; });
+    if (!lineupOrder.length) {
+      var emptyLi = el('li', { class: 'lineup-hint' });
+      emptyLi.appendChild(el('span', { class: 'ph soft', 'aria-hidden': 'true' }, '＋'));
+      emptyLi.appendChild(document.createTextNode('Tap characters above — they’ll appear here in order.'));
+      list.appendChild(emptyLi);
+    } else {
+      lineupOrder.forEach(function (e, idx) {
+        var label = (collages[e.c] && collages[e.c].label) || ('Collage ' + (e.c + 1));
+        var li = el('li', { class: 'preview-li' });
+        var a = el('a', { href: '#collage-' + (e.c + 1), title: 'Preview ' + (idx + 1) + ' · ' + label + ' option ' + e.o });
+        a.appendChild(el('span', { class: 'preview-badge sm', 'aria-hidden': 'true' }, '#' + (idx + 1)));
+        a.appendChild(cropCanvas(e.c, e.o, 150));
+        a.appendChild(document.createTextNode('Preview ' + (idx + 1)));
+        a.appendChild(el('span', { class: 'preview-ref' }, label + ' · option ' + e.o));
+        li.appendChild(a); list.appendChild(li);
+
+        var ba = el('a', { href: '#collage-' + (e.c + 1), title: 'Preview ' + (idx + 1) });
+        ba.appendChild(el('span', { class: 'preview-badge sm', 'aria-hidden': 'true' }, '#' + (idx + 1)));
+        ba.appendChild(cropCanvas(e.c, e.o, 60));
+        ba.appendChild(document.createTextNode('P' + (idx + 1)));
+        bar.appendChild(ba);
+      });
+    }
     renderLineup();
     renderOpinions();
-    var all = done === collages.length;
+    var all = done === collages.length && collages.length > 0;
     document.getElementById('submit').disabled = !all;
     document.getElementById('bar-count').textContent = done + '/' + collages.length + ' collages · ' + totalPicks + ' pick' + (totalPicks === 1 ? '' : 's');
     document.getElementById('need').textContent = all
-      ? ('All collages have a pick (' + totalPicks + ' total) — ready to submit.')
+      ? ('All collages have a pick (' + totalPicks + ' total) — ready to submit. Drag cards above to reorder.')
       : ((collages.length - done) + ' collage(s) still need at least one pick.');
   }
 
@@ -476,9 +634,12 @@
           note: isAdvisor() && notes[i] && notes[i].trim() ? notes[i].trim() : undefined
         };
       }),
-      summary: collages.map(function (c, i) {
-        var sel = picks[i] || [];
-        return 'Collage ' + (i + 1) + ' - option' + (sel.length === 1 ? ' ' + sel[0] : 's ' + sel.join(','));
+      // Ordered preview for the image bot / sheet tools (drag order = client preference).
+      lineup: lineupOrder.map(function (e, idx) {
+        return { collage: e.c + 1, option: e.o, previewIndex: idx + 1 };
+      }),
+      summary: lineupOrder.map(function (e, idx) {
+        return '#' + (idx + 1) + ' Collage ' + (e.c + 1) + ' option ' + e.o;
       }).join('; ')
     };
   }
@@ -489,11 +650,18 @@
     box.appendChild(el('h3', null, (TEST ? '[TEST] ' : '') + 'Thanks, your picks were sent! \u2728'));
     box.appendChild(el('p', null, PREVIEW ? 'Test preview: this is what ' + (client ? client.name : 'the client') + ' sees after Submit. Nothing was emailed.' : 'Hush Media Creations will take it from here. Your picks:'));
     var strip = el('ul', { class: 'picks' });
-    data.picks.forEach(function (p, i) {
-      var sel = Array.isArray(p.selected) ? p.selected : (Array.isArray(p.option) ? p.option : (p.option != null ? [p.option] : []));
-      var li = el('li');
-      sel.forEach(function (opt) { li.appendChild(cropCanvas(i, opt, 150)); });
-      li.appendChild(document.createTextNode('Collage ' + p.collage + ' - ' + (sel.length ? ('option' + (sel.length > 1 ? 's ' : ' ') + sel.join(', ')) : 'none')));
+    var thanksLine = Array.isArray(data.lineup) && data.lineup.length
+      ? data.lineup
+      : data.picks.reduce(function (acc, p) {
+          var sel = Array.isArray(p.selected) ? p.selected : (Array.isArray(p.option) ? p.option : (p.option != null ? [p.option] : []));
+          sel.forEach(function (opt) { acc.push({ collage: p.collage, option: opt }); });
+          return acc;
+        }, []);
+    thanksLine.forEach(function (e, idx) {
+      var li = el('li', { class: 'preview-li' });
+      li.appendChild(el('span', { class: 'preview-badge sm', 'aria-hidden': 'true' }, '#' + (idx + 1)));
+      li.appendChild(cropCanvas(e.collage - 1, e.option, 150));
+      li.appendChild(document.createTextNode('Preview ' + (idx + 1) + ' · Collage ' + e.collage + ' option ' + e.option));
       strip.appendChild(li);
     });
     box.appendChild(strip);
@@ -563,7 +731,9 @@
   }
 
   function resetAll() {
-    collages.forEach(function (c, i) { picks[i] = []; syncCollageUI(i); }); save();
+    collages.forEach(function (c, i) { picks[i] = []; syncCollageUI(i); });
+    lineupOrder = [];
+    save();
     try { localStorage.removeItem(storeKey); localStorage.removeItem(storeKey + ':notes'); } catch (e) {}
     notes = []; document.querySelectorAll('.note-field textarea').forEach(function (t) { t.value = ''; });
     document.getElementById('overall').value = '';
@@ -636,6 +806,7 @@
       var raw = p.collages || [];
       collages = ADMIN ? raw.slice() : raw.filter(function (c) { return c && !c.hidden; });
       picks = collages.map(function () { return []; });
+      lineupOrder = [];
       if (mode !== 'locked') load();
       document.title = p.title + ' — Pick your characters · Hush Media Creations';
       document.getElementById('title').textContent = p.title;

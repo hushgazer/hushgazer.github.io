@@ -6,12 +6,13 @@ Usage: python3 tools/make_picks_sheet.py payload.json [-o out.png] [--root SITE_
 
 Payload (schema hush-picks/v1 or v2): {"project": slug, "picks": [{"collage",
 "file", "option" (number|number[]), "selected" (number[], v2), "options",
-"crop" / "crops": [{"option","x","y","w","h"}]...}]}. Crops are cut from the
-ORIGINAL collage images at native resolution (no downscaling); each selected
-character becomes its own tile with a "Collage X - option Y" label. If a crop is
-missing it is recomputed from projects/<slug>/project.json (equal columns or
-custom "columns"). Multiple picks on one collage produce multiple tiles + marked
-copies.
+"crop" / "crops": [{"option","x","y","w","h"}]...}], optional "lineup":
+[{"collage","option","previewIndex"}, ...]}. Crops are cut from the ORIGINAL
+collage images at native resolution (no downscaling). When "lineup" is present,
+tiles follow that drag/selection order (#1, #2, …); otherwise collage order.
+Each tile is labeled "Preview N · Collage X - option Y" (or without Preview when
+no lineup). If a crop is missing it is recomputed from project.json. Multiple
+picks on one collage produce multiple tiles + marked copies.
 
 Also writes one MARKED copy per selected character to
 <out-stem>-marked/<collage-stem>-pick<N>.png: the original collage at its native
@@ -106,20 +107,58 @@ def main():
     out = a.out or os.path.join(a.root, f"picks-sheet-{slug}.png")
     os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
     mdir = os.path.splitext(out)[0] + "-marked"; marked = []
-    tiles = []
-    for i, p in enumerate(sorted(data["picks"], key=lambda p: p["collage"])):
-        path = resolve(a.root, pdir, p["file"])
-        im = Image.open(path); im.load()
-        boxes = crop_entries(p, pj, im)
-        if not boxes: continue
-        if not a.no_marked:
+    # Index picks by collage for crop lookup / marked copies
+    by_collage = {}
+    for p in data["picks"]:
+        by_collage[int(p["collage"])] = p
+
+    # Build ordered (collage, option) sequence from lineup when present
+    lineup = data.get("lineup")
+    ordered = []
+    if isinstance(lineup, list) and lineup:
+        for e in lineup:
+            if not e: continue
+            try:
+                ordered.append((int(e["collage"]), int(e["option"]), int(e.get("previewIndex") or 0)))
+            except (KeyError, TypeError, ValueError):
+                continue
+        # fill previewIndex if missing
+        for i, (c, o, pi) in enumerate(ordered):
+            if not pi: ordered[i] = (c, o, i + 1)
+    else:
+        for p in sorted(data["picks"], key=lambda p: p["collage"]):
+            for opt in selected_opts(p):
+                ordered.append((int(p["collage"]), opt, 0))
+
+    # Marked copies once per collage (all its selected options outlined)
+    if not a.no_marked:
+        for ci, p in sorted(by_collage.items()):
+            path = resolve(a.root, pdir, p["file"])
+            im = Image.open(path); im.load()
+            boxes = crop_entries(p, pj, im)
+            if not boxes: continue
             os.makedirs(mdir, exist_ok=True)
             mk = mark(im, boxes); assert mk.size == im.size
             for opt, _c in boxes:
                 mp = os.path.join(mdir, f"{os.path.splitext(os.path.basename(path))[0]}-pick{opt}.png")
-                mk.save(mp, compress_level=6); marked.append((mp, mk.size))  # PNG = lossless, original size
-        for opt, c in boxes:
-            tiles.append((im.crop((c["x"], c["y"], c["x"] + c["w"], c["y"] + c["h"])), f"Collage {p['collage']} - option {opt}"))
+                mk.save(mp, compress_level=6); marked.append((mp, mk.size))
+
+    tiles = []
+    img_cache = {}
+    for collage, opt, preview in ordered:
+        p = by_collage.get(collage)
+        if not p: continue
+        path = resolve(a.root, pdir, p["file"])
+        if path not in img_cache:
+            im = Image.open(path); im.load(); img_cache[path] = im
+        else:
+            im = img_cache[path]
+        boxes = {o: c for o, c in crop_entries(p, pj, im)}
+        c = boxes.get(opt)
+        if not c: continue
+        label = (f"#{preview} · Collage {collage} - option {opt}" if preview
+                 else f"Collage {collage} - option {opt}")
+        tiles.append((im.crop((c["x"], c["y"], c["x"] + c["w"], c["y"] + c["h"])), label))
     if not tiles: raise SystemExit("no selected characters in payload")
     pad, lab = 30, 90
     f = font(44)

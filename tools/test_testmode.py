@@ -26,7 +26,7 @@ with sync_playwright() as p:
     assert pg.locator('#who-switch').count() == 0
     pg.screenshot(path=OUT + '/test-julius.png')
     for i in range(1, 11): pg.click('#collage-%d .opt[data-opt="2"]' % i)
-    assert pg.locator('#lineup-strip canvas').count() == 10 or pg.locator('#lineup canvas').count() == 10
+    assert pg.locator('#lineup .preview-card').count() == 10
     assert pg.locator('#picks li').count() == 10
     pg.click('#submit'); pg.wait_for_selector('#confirm:not([hidden])')
     assert 'Nothing was emailed' in pg.text_content('#confirm'); assert sent == [], sent

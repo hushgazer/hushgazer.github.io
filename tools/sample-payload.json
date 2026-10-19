@@ -93,5 +93,22 @@
       ]
     }
   ],
-  "summary": "Collage 1 - option 5; Collage 2 - option 2; Collage 3 - option 8"
+  "summary": "#1 Collage 1 option 5; #2 Collage 2 option 2; #3 Collage 3 option 8",
+  "lineup": [
+    {
+      "collage": 1,
+      "option": 5,
+      "previewIndex": 1
+    },
+    {
+      "collage": 2,
+      "option": 2,
+      "previewIndex": 2
+    },
+    {
+      "collage": 3,
+      "option": 8,
+      "previewIndex": 3
+    }
+  ]
 }
