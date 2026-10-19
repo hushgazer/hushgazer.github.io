@@ -195,12 +195,16 @@
     people.forEach(function (p) {
       var on = p.name === cur;
       var x = el('button', { type: 'button', class: 'tb-who' + (on ? ' is-on' : ''), 'data-as': p.name, 'aria-pressed': on ? 'true' : 'false' });
+      if (on) x.appendChild(el('span', { class: 'tb-check', 'aria-hidden': 'true' }, '\u2713'));
       x.appendChild(document.createTextNode(p.name));
       if (p.role) x.appendChild(el('small', null, p.role));
+      if (!on) x.title = 'Switch to viewing as ' + p.name;
       x.addEventListener('click', function () { if (p.name !== viewAs(people)) { sset('hush-test-as', p.name); cleanReload(); } });
       seg.appendChild(x);
     });
     w.appendChild(seg);
+    var curP = people.filter(function (p) { return p.name === cur; })[0] || {};
+    w.appendChild(el('span', { class: 'tb-now', role: 'status' }, '\ud83d\udc41 Viewing as ' + cur + (curP.role ? ' \u00b7 ' + curP.role : '')));
     w.appendChild(el('span', { class: 'tb-note' }, 'Preview only \u00b7 Submit sends nothing'));
     var acts = el('span', { class: 'tb-actions' });
     if (opts.onClear) {
