@@ -45,6 +45,8 @@ with sync_playwright() as p:
         c = br.new_context(viewport={'width': 1280, 'height': 900})
         c.route(re.compile(r'^(?!http://127\.0\.0\.1:8765/|https://hushgazer\.github\.io/|https://formsubmit\.co/).*'), lambda r: r.abort())
         c.route(LIVE + '**', serve_local_as_live); c.route(FS, mock_api)
+        # pass the "Who are you?" gate as a client (the gate itself is tested in tools/test_who.py)
+        c.add_init_script("try{sessionStorage.setItem('hush-who','Julius')}catch(e){}")
         pg = c.new_page()
         pg.on('console', lambda m: errs.append(m.text) if m.type == 'error' else None)
         pg.on('pageerror', lambda e: errs.append(str(e)))
@@ -70,7 +72,7 @@ with sync_playwright() as p:
     assert pg.input_value('#admin-name') == 'Hush' and pg.locator('#admin-name option').count() == 1
     pg.fill('#admin-pass', PRIV['password']); pg.click('#login-btn'); pg.wait_for_url(B); pg.wait_for_selector('#admin-bar')
     pg.screenshot(path='preview-admin-home.png')
-    rows = pg.locator('.admin-list li'); assert rows.count() == 4, rows.count()
+    rows = pg.locator('.admin-list li'); assert rows.count() == 3, rows.count()
     assert 'Hidden' in pg.text_content('li[data-slug=demo] .adm-chip')
     pg.goto(B + 'demo/'); pg.wait_for_selector('.collage'); assert pg.locator('#admin-bar .adm-chip').count() == 1
     pg.goto(B + 'kraken/'); pg.wait_for_selector('#admin-bar [data-act=hide]')
@@ -81,7 +83,7 @@ with sync_playwright() as p:
     pg.click('#admin-signout'); pg.wait_for_url(B)
     assert pg.locator('#admin-bar').count() == 0 and pg.evaluate("sessionStorage.getItem('hush-admin')") is None
     c.close()
-    print('PASS admin sign-in (wrong rejected, Hush ok), all 4 projects listed, local preview no email, sign out')
+    print('PASS admin sign-in (wrong rejected, Hush ok), all 3 projects listed, local preview no email, sign out')
 
     # 4) "live" origin: hide/unhide/delete send signed FormSubmit requests that admin_action.py accepts
     c, pg = ctx_for(LIVE)

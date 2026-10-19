@@ -52,10 +52,20 @@
   function resolveClient(p) {
     if (!Array.isArray(p.clients) || !p.clients.length) return Promise.resolve('name');
     var tok = new URLSearchParams(location.search).get('c') || '';
-    if (!/^[A-Za-z0-9_-]{6,80}$/.test(tok) || !(window.crypto && crypto.subtle)) return Promise.resolve('locked');
+    // Shared project link (no ?c=): the person picked in the "Who are you?" gate (assets/who.js).
+    function bySession() {
+      var who = (window.HushWho && window.HushWho.name) || '';
+      var m = p.clients.filter(function (c) { return c && typeof c.keyHash === 'string' && c.name === who; })[0];
+      if (!m) return 'locked';
+      var h = m.keyHash.toLowerCase();
+      client = { name: String(m.name), tag: h.slice(0, 8), role: m.role === 'decider' || m.role === 'advisor' ? m.role : 'client' };
+      storeKey += ':' + client.tag;
+      return 'client';
+    }
+    if (!/^[A-Za-z0-9_-]{6,80}$/.test(tok) || !(window.crypto && crypto.subtle)) return Promise.resolve(bySession());
     return sha256Hex(tok).then(function (h) {
       var m = p.clients.filter(function (c) { return c && typeof c.keyHash === 'string' && c.keyHash.toLowerCase() === h; })[0];
-      if (!m) return 'locked';
+      if (!m) return bySession();
       client = { name: String(m.name || 'Client'), tag: h.slice(0, 8), role: m.role === 'decider' || m.role === 'advisor' ? m.role : 'client' };
       storeKey += ':' + client.tag;   // two clients on one device never mix
       return 'client';
@@ -519,6 +529,11 @@
       if (mode === 'client') {
         var badge = document.getElementById('client-badge');
         badge.textContent = 'Picking as ' + client.name + (client.role === 'advisor' ? ' \u00b7 your opinion goes to the decision maker' : ''); badge.hidden = false;
+        if (window.HushWho && !new URLSearchParams(location.search).get('c')) {
+          var sw = el('button', { type: 'button', class: 'who-switch', id: 'who-switch' }, 'Not you?');
+          sw.addEventListener('click', function () { window.HushWho.reset(); });
+          badge.appendChild(sw);
+        }
         if (isAdvisor()) {
           document.getElementById('opinion-field').hidden = false;
           document.getElementById('overall').addEventListener('input', save);
