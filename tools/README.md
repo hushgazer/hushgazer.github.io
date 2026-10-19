@@ -9,7 +9,7 @@ no passwords, no trackers, no external scripts. Picks are emailed through FormSu
 2. Copy the files unchanged into `projects/<slug>/` (e.g. `collage-1.png` …) and write
    `projects/<slug>/project.json`:
    ```json
-   {"title": "Kraken", "description": "…",
+   {"title": "Kraken", "description": "…", "packSize": 8,
     "collages": [{"file": "collage-1.png", "options": 7, "label": "Collage 1"}]}
    ```
 3. `python3 tools/new_project.py <slug> "Title" --desc "…" --detect --image-bot <agent-id>`
@@ -52,14 +52,21 @@ no passwords, no trackers, no external scripts. Picks are emailed through FormSu
   character again to unpick it. Submit stays disabled until every collage has ≥1 pick.
   Picks are saved in the browser per project **and** per client, so two clients on one
   device never mix.
-* **Final lineup**: every selected character side by side (e.g. caption `C1 #2 #5`),
-  cut from the full-quality collages at native resolution (no downscaling);
-  "not picked yet" slots for empty collages; **Download lineup** saves a full-resolution
-  PNG locally (`canvas.toBlob`, nothing uploaded). Sticky bar shows
-  `N/M collages · K picks`.
-* Payload schema **`hush-picks/v2`**: each entry has `selected: number[]` and
+* **Pack slots (sticky bar)**: each project has a fixed **`packSize`** (or `slots`)
+  in `projects/<slug>/project.json` (default **8** if missing — independent of how
+  many collages there are). The sticky bar always shows exactly that many numbered
+  boxes. Filled slots are your picks (drag to swap / move; × clears a slot back to
+  empty without collapsing holes). Empty slots mean **NEW / remake requested** for
+  that pack position. Tap a character → fills the first empty slot; tap again →
+  unpicks and clears it from any slot. Bar shows `N of M pack slots filled` and a
+  short “Feel free to move things around” hint. **Download lineup** saves a
+  full-resolution PNG of the pack (empty slots drawn as NEW).
+* Payload schema **`hush-picks/v2`**: each collage entry has `selected: number[]` and
   `option: number|number[]` (single number when only one pick), plus `crops[]`.
-  Older `hush-picks/v1` (single `option` + `crop`) still works in the sheet tools.
+  `lineup` is a fixed-length array of length `packSize`: each item is
+  `{collage, option, previewIndex}` or **`null`** (remake). `summary` lists empty
+  slots as `#N NEW / remake requested`. Older `hush-picks/v1` still works in the
+  sheet tools.
 * Subject: `Hush picks: <Title> - <Client> #<clientTag> (<slug>)`.
 
 ## 4. Test mode (Hush only) and the picks-watcher

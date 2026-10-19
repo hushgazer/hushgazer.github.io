@@ -6,7 +6,7 @@
   "clientTag": null,
   "clientRole": null,
   "test": false,
-  "submittedAt": "2026-10-19T14:50:21.545Z",
+  "submittedAt": "2026-10-19T15:44:06.209Z",
   "picks": [
     {
       "collage": 1,
@@ -93,22 +93,28 @@
       ]
     }
   ],
-  "summary": "#1 Collage 1 option 5; #2 Collage 2 option 2; #3 Collage 3 option 8",
+  "packSize": 8,
   "lineup": [
-    {
-      "collage": 1,
-      "option": 5,
-      "previewIndex": 1
-    },
     {
       "collage": 2,
       "option": 2,
+      "previewIndex": 1
+    },
+    {
+      "collage": 1,
+      "option": 5,
       "previewIndex": 2
     },
     {
       "collage": 3,
       "option": 8,
       "previewIndex": 3
-    }
-  ]
+    },
+    null,
+    null,
+    null,
+    null,
+    null
+  ],
+  "summary": "#1 Collage 2 option 2; #2 Collage 1 option 5; #3 Collage 3 option 8; #4 NEW / remake requested; #5 NEW / remake requested; #6 NEW / remake requested; #7 NEW / remake requested; #8 NEW / remake requested"
 }

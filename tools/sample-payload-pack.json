@@ -1,0 +1,116 @@
+{
+  "schema": "hush-picks/v2",
+  "project": "demo",
+  "projectTitle": "Demo Project (Sample)",
+  "clientName": "Pack Tester",
+  "clientTag": null,
+  "clientRole": null,
+  "test": true,
+  "submittedAt": "2026-10-19T15:44:12.709Z",
+  "picks": [
+    {
+      "collage": 1,
+      "file": "projects/demo/collage-1.png",
+      "option": 5,
+      "selected": [
+        5
+      ],
+      "options": 8,
+      "imageSize": {
+        "w": 3200,
+        "h": 800
+      },
+      "crop": {
+        "x": 1600,
+        "y": 116,
+        "w": 400,
+        "h": 684
+      },
+      "crops": [
+        {
+          "option": 5,
+          "x": 1600,
+          "y": 116,
+          "w": 400,
+          "h": 684
+        }
+      ]
+    },
+    {
+      "collage": 2,
+      "file": "projects/demo/collage-2.png",
+      "option": 2,
+      "selected": [
+        2
+      ],
+      "options": 7,
+      "imageSize": {
+        "w": 3200,
+        "h": 800
+      },
+      "crop": {
+        "x": 456,
+        "y": 116,
+        "w": 458,
+        "h": 684
+      },
+      "crops": [
+        {
+          "option": 2,
+          "x": 456,
+          "y": 116,
+          "w": 458,
+          "h": 684
+        }
+      ]
+    },
+    {
+      "collage": 3,
+      "file": "projects/demo/collage-3.png",
+      "option": 8,
+      "selected": [
+        8
+      ],
+      "options": 8,
+      "imageSize": {
+        "w": 3200,
+        "h": 800
+      },
+      "crop": {
+        "x": 2800,
+        "y": 116,
+        "w": 400,
+        "h": 684
+      },
+      "crops": [
+        {
+          "option": 8,
+          "x": 2800,
+          "y": 116,
+          "w": 400,
+          "h": 684
+        }
+      ]
+    }
+  ],
+  "packSize": 8,
+  "lineup": [
+    {
+      "collage": 2,
+      "option": 2,
+      "previewIndex": 1
+    },
+    null,
+    {
+      "collage": 3,
+      "option": 8,
+      "previewIndex": 3
+    },
+    null,
+    null,
+    null,
+    null,
+    null
+  ],
+  "summary": "#1 Collage 2 option 2; #2 NEW / remake requested; #3 Collage 3 option 8; #4 NEW / remake requested; #5 NEW / remake requested; #6 NEW / remake requested; #7 NEW / remake requested; #8 NEW / remake requested"
+}

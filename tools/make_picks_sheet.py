@@ -8,10 +8,10 @@ Payload (schema hush-picks/v1 or v2): {"project": slug, "picks": [{"collage",
 "file", "option" (number|number[]), "selected" (number[], v2), "options",
 "crop" / "crops": [{"option","x","y","w","h"}]...}], optional "lineup":
 [{"collage","option","previewIndex"}, ...]}. Crops are cut from the ORIGINAL
-collage images at native resolution (no downscaling). When "lineup" is present,
-tiles follow that drag/selection order (#1, #2, …); otherwise collage order.
-Each tile is labeled "Preview N · Collage X - option Y" (or without Preview when
-no lineup). If a crop is missing it is recomputed from project.json. Multiple
+collage images at native resolution (no downscaling). When "lineup" is present, tiles follow that fixed pack order (#1…#N);
+null / empty entries render as "NEW / remake requested". Otherwise collage order.
+Each tile is labeled "#N · Collage X - option Y" (or without # when no lineup).
+Optional "packSize" pads the lineup with NEW slots. If a crop is missing it is recomputed from project.json. Multiple
 picks on one collage produce multiple tiles + marked copies.
 
 Also writes one MARKED copy per selected character to
@@ -112,23 +112,29 @@ def main():
     for p in data["picks"]:
         by_collage[int(p["collage"])] = p
 
-    # Build ordered (collage, option) sequence from lineup when present
+    # Build ordered sequence from lineup when present.
+    # Fixed pack slots: null / {"empty":true} entries mean NEW / remake for that pack index.
     lineup = data.get("lineup")
-    ordered = []
+    pack_size = int(data["packSize"]) if isinstance(data.get("packSize"), int) and data["packSize"] >= 1 else None
+    ordered = []  # list of ("pick", collage, opt, preview) | ("new", preview)
     if isinstance(lineup, list) and lineup:
-        for e in lineup:
-            if not e: continue
-            try:
-                ordered.append((int(e["collage"]), int(e["option"]), int(e.get("previewIndex") or 0)))
-            except (KeyError, TypeError, ValueError):
+        for i, e in enumerate(lineup):
+            pi = i + 1
+            if e is None or e is False or (isinstance(e, dict) and (e.get("empty") or e.get("remake"))):
+                ordered.append(("new", pi))
                 continue
-        # fill previewIndex if missing
-        for i, (c, o, pi) in enumerate(ordered):
-            if not pi: ordered[i] = (c, o, i + 1)
+            try:
+                pi = int(e.get("previewIndex") or pi)
+                ordered.append(("pick", int(e["collage"]), int(e["option"]), pi))
+            except (KeyError, TypeError, ValueError, AttributeError):
+                ordered.append(("new", pi))
+        if pack_size and len(ordered) < pack_size:
+            for i in range(len(ordered), pack_size):
+                ordered.append(("new", i + 1))
     else:
         for p in sorted(data["picks"], key=lambda p: p["collage"]):
             for opt in selected_opts(p):
-                ordered.append((int(p["collage"]), opt, 0))
+                ordered.append(("pick", int(p["collage"]), opt, 0))
 
     # Marked copies once per collage (all its selected options outlined)
     if not a.no_marked:
@@ -145,7 +151,12 @@ def main():
 
     tiles = []
     img_cache = {}
-    for collage, opt, preview in ordered:
+    for entry in ordered:
+        if entry[0] == "new":
+            pi = entry[1]
+            tiles.append((None, f"#{pi} · NEW / remake requested"))
+            continue
+        _, collage, opt, preview = entry
         p = by_collage.get(collage)
         if not p: continue
         path = resolve(a.root, pdir, p["file"])
@@ -159,24 +170,38 @@ def main():
         label = (f"#{preview} · Collage {collage} - option {opt}" if preview
                  else f"Collage {collage} - option {opt}")
         tiles.append((im.crop((c["x"], c["y"], c["x"] + c["w"], c["y"] + c["h"])), label))
-    if not tiles: raise SystemExit("no selected characters in payload")
+    if not any(t is not None for t, _ in tiles): raise SystemExit("no selected characters in payload")
     pad, lab = 30, 90
     f = font(44)
-    H = max(t.height for t, _ in tiles) + lab + 2 * pad
+    filled_h = [t.height for t, _ in tiles if t is not None]
+    filled_w = [t.width for t, _ in tiles if t is not None]
+    max_h = max(filled_h) if filled_h else 400
+    avg_w = round(sum(filled_w) / len(filled_w)) if filled_w else 280
+    H = max_h + lab + 2 * pad
     probe = ImageDraw.Draw(Image.new("RGB", (1, 1)))
-    cols = [max(t.width, probe.textbbox((0, 0), l, font=f)[2] + 20) for t, l in tiles]
+    cols = [max((t.width if t is not None else avg_w), probe.textbbox((0, 0), l, font=f)[2] + 20) for t, l in tiles]
     W = sum(cols) + pad * (len(tiles) + 1)
     sheet = Image.new("RGB", (W, H + 70), (20, 21, 27)); d = ImageDraw.Draw(sheet)
     d.text((pad, 20), f"{data.get('projectTitle', slug)} — client picks" + (f" ({data['clientName']})" if data.get("clientName") else ""), font=font(36), fill=(242, 192, 99))
     x = pad
     for (t, label), cw in zip(tiles, cols):
-        px = (x + (cw - t.width) // 2, 70 + pad)
-        if t.mode in ("RGBA", "LA", "P"):                       # transparent collage: on white, 1:1
-            t = t.convert("RGBA"); sheet.paste((255, 255, 255), (*px, px[0] + t.width, px[1] + t.height)); sheet.paste(t, px, mask=t.split()[3])
+        if t is None:
+            # Empty pack slot → dashed NEW placeholder
+            box = (x + 8, 70 + pad + 8, x + cw - 8, 70 + pad + max_h - 8)
+            d.rectangle(box, outline=(242, 192, 99), width=4)
+            nf = font(36)
+            nb = d.textbbox((0, 0), "NEW", font=nf)
+            d.text((x + (cw - (nb[2] - nb[0])) / 2, 70 + pad + max_h / 2 - 24), "NEW", font=nf, fill=(242, 192, 99))
+            bb = d.textbbox((0, 0), label, font=f)
+            d.text((x + (cw - (bb[2] - bb[0])) / 2, 70 + pad + max_h + 20), label, font=f, fill=(242, 192, 99))
         else:
-            sheet.paste(t, px)  # pasted 1:1, no resampling
-        bb = d.textbbox((0, 0), label, font=f)
-        d.text((x + (cw - (bb[2] - bb[0])) / 2, 70 + pad + t.height + 20), label, font=f, fill=(236, 235, 242))
+            px = (x + (cw - t.width) // 2, 70 + pad)
+            if t.mode in ("RGBA", "LA", "P"):                       # transparent collage: on white, 1:1
+                t = t.convert("RGBA"); sheet.paste((255, 255, 255), (*px, px[0] + t.width, px[1] + t.height)); sheet.paste(t, px, mask=t.split()[3])
+            else:
+                sheet.paste(t, px)  # pasted 1:1, no resampling
+            bb = d.textbbox((0, 0), label, font=f)
+            d.text((x + (cw - (bb[2] - bb[0])) / 2, 70 + pad + t.height + 20), label, font=f, fill=(236, 235, 242))
         x += cw + pad
     sheet.save(out, compress_level=6)  # PNG is lossless
     print(out, sheet.size)

@@ -26,8 +26,10 @@ with sync_playwright() as p:
     assert pg.locator('#who-switch').count() == 0
     pg.screenshot(path=OUT + '/test-julius.png')
     for i in range(1, 11): pg.click('#collage-%d .opt[data-opt="2"]' % i)
-    assert pg.locator('#bar-thumbs .preview-card').count() == 10
-    assert pg.locator('#picks li').count() == 10
+    # packSize 8: first 8 picks fill slots; remaining collage picks stay selected but pack is full
+    assert pg.locator('#bar-thumbs .bar-slot').count() == 8
+    assert pg.locator('#bar-thumbs .preview-card').count() == 8
+    assert pg.locator('#picks li').count() == 8
     pg.click('#submit'); pg.wait_for_selector('#confirm:not([hidden])')
     assert 'Nothing was emailed' in pg.text_content('#confirm'); assert sent == [], sent
     pg.evaluate("document.querySelector('.bar').scrollIntoView()"); pg.wait_for_timeout(300)

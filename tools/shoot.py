@@ -109,7 +109,9 @@ with sync_playwright() as p:
     assert post.url == 'https://formsubmit.co/ajax/test-alias-0000' and post.headers['accept'] == 'application/json'
     assert sent['_subject'] == 'Hush picks: Demo Project (Sample) - Test Client (demo)' and sent['_template'] == 'box'
     assert sent['_captcha'] == 'false' and sent['_honey'] == '' and sent['project'] == 'demo'
-    assert sent['client_name'] == 'Test Client' and sent['summary'].startswith('Collage 1 - option 5')
+    assert sent['client_name'] == 'Test Client'
+    assert 'Collage 1 option 5' in sent['summary'] and 'Collage 2 option 2' in sent['summary'] and 'Collage 3 option 8' in sent['summary']
+    assert sent['summary'].count('NEW / remake requested') == 5
     assert sent['test'] == 'no' and '[TEST]' not in sent['_subject']
     assert sent['_cc'] == 'hushmediacreations+picks@mail.grokbot.com', 'real submissions cc the picks bot'
     assert not any(k not in ('_cc',) and ('mail' in k.lower() or 'replyto' in k.lower()) for k in sent), 'no client email field may be sent'
@@ -120,6 +122,10 @@ with sync_playwright() as p:
     assert [x['selected'] for x in data['picks']] == [[5], [2], [8]]
     assert all(len(x['crops']) == 1 for x in data['picks'])
     assert data['clientName'] == 'Test Client' and data['test'] is False and 'clientEmail' not in data
+    assert data.get('packSize') == 8 and isinstance(data.get('lineup'), list) and len(data['lineup']) == 8
+    assert data['lineup'].count(None) == 5  # 3 filled + 5 empty remake slots
+    filled = [e for e in data['lineup'] if e]
+    assert {(e['collage'], e['option']) for e in filled} == {(1, 5), (2, 2), (3, 8)}
     assert pg.locator('#test-banner').count() == 0 and 'TEST' not in pg.text_content('body')
     open('tools/sample-payload.json', 'w').write(json.dumps(data, indent=2))
     print('PASS live submit (mocked FormSubmit): POST body ok, payload JSON intact ->', data['summary'])
@@ -144,9 +150,9 @@ with sync_playwright() as p:
     assert md['picks'][0]['option'] == [2, 5] and md['picks'][0]['selected'] == [2, 5]
     assert len(md['picks'][0]['crops']) == 2 and {c['option'] for c in md['picks'][0]['crops']} == {2, 5}
     assert md['picks'][1]['option'] == 3 and md['picks'][2]['option'] == 1
-    assert 'options 2,5' in md['summary'] or 'option' in md['summary']
-    assert 'Collage 1 - options 2,5' in md['summary']
-    assert pg.locator('#confirm canvas').count() == 4  # 2+1+1
+    assert 'Collage 1 option 2' in md['summary'] and 'Collage 1 option 5' in md['summary']
+    assert md.get('packSize') == 8 and len(md['lineup']) == 8 and md['lineup'].count(None) == 4
+    assert pg.locator('#confirm canvas').count() == 4  # 2+1+1 filled; empty slots are non-canvas
     print('PASS multi-select: two picks on one collage, tap-to-unpick, v2 payload + crops[]')
     ctx.close()
 
@@ -157,7 +163,9 @@ with sync_playwright() as p:
     pg.click('#collage-1 .opt[data-opt="2"]'); pg.click('#collage-1 .opt[data-opt="5"]')
     pg.click('#collage-2 .opt[data-opt="3"]'); pg.click('#collage-3 .opt[data-opt="7"]')
     assert '#1' in pg.text_content('#bar-thumbs') and pg.locator('#bar-thumbs .preview-card').count() >= 2
-    assert pg.text_content('#bar-count') == '3/3 collages · 4 picks'
+    assert pg.locator('#bar-thumbs .bar-slot').count() == 8
+    assert '4 of 8 pack slots filled' in pg.text_content('#bar-count')
+    assert 'Feel free to move things around' in pg.text_content('#bar-hint')
     pg.evaluate("document.getElementById('collage-1').scrollIntoView({block:'center'})"); pg.wait_for_timeout(250)
     pg.screenshot(path='preview-multi-collage.png')
     pg.evaluate("document.querySelector('.bar').scrollIntoView()"); pg.wait_for_timeout(250)
@@ -185,33 +193,41 @@ with sync_playwright() as p:
     print('PASS honeypot: bot submission not sent')
     ctx.close()
 
-    # 4a) FINAL LINEUP: live, native-resolution crops, empty slots, local PNG download
+    # 4a) PACK SLOTS: fixed packSize boxes, holes, clear-to-empty, native download
     from PIL import Image
     ext.clear()
     ctx = new_ctx(viewport={'width': 1280, 'height': 900}, accept_downloads=True); pg = ctx.new_page(); watch(pg)
     pg.route('**/assets/project.js*', mock_js); pg.route(FS, mock_api)
     pg.goto(B + 'demo/'); pass_who(pg); pg.wait_for_selector('#bar-thumbs')
-    assert pg.locator('#bar-thumbs .preview-card').count() == 0
-    assert 'appear here in order' in pg.text_content('#bar-thumbs')
+    assert pg.locator('#bar-thumbs .bar-slot').count() == 8
+    assert pg.locator('#bar-thumbs .bar-slot-empty').count() == 8
+    assert 'New' in pg.text_content('#bar-thumbs')
+    assert 'Feel free to move things around' in pg.text_content('#bar-hint')
     order = pg.evaluate("[...document.querySelectorAll('#collages, #summary')].map(e => e.id)")
     assert order == ['collages', 'summary'], order
     assert pg.locator('#lineup').count() == 0
     pg.click('#collage-1 .opt[data-opt="5"]'); pg.click('#collage-3 .opt[data-opt="8"]')
-    caps = pg.eval_on_selector_all('#bar-thumbs .preview-badge', 'e => e.map(x => x.textContent)')
-    assert caps == ['#1', '#2'], caps
+    assert pg.locator('#bar-thumbs .preview-card').count() == 2
+    assert pg.locator('#bar-thumbs .bar-slot-empty').count() == 6
+    caps = pg.eval_on_selector_all('#bar-thumbs .bar-slot .preview-badge', 'e => e.map(x => x.textContent)')
+    assert caps == ['#%d' % i for i in range(1, 9)], caps
     cfg = json.load(open('projects/demo/project.json'))
     c1 = Image.open('projects/demo/collage-1.png'); cols = cfg['collages'][0]['columns']
     w5 = round(cols[5] / cols[-1] * c1.width) - round(cols[4] / cols[-1] * c1.width)
     top = cfg['collages'][0].get('cropTop', 0)
     assert pg.locator('#summary .preview-li canvas').count() >= 1
-    dims = [w5, c1.height - top]  # expected native crop size (verified via download below)
-    # multi-select: add #2 alongside #5 → Preview 3; tap #5 again to unpick (removes Preview 1, renumbers)
+    dims = [w5, c1.height - top]
+    # multi-select: add opt 2 → 3 filled; tap opt 5 again → clears that character from its slot (hole stays)
     pg.click('#collage-1 .opt[data-opt="2"]')
     assert pg.locator('#bar-thumbs .preview-card').count() == 3
-    assert pg.eval_on_selector_all('#bar-thumbs .preview-badge', 'e => e.map(x => x.textContent)') == ['#1', '#2', '#3']
-    pg.click('#collage-1 .opt[data-opt="5"]')  # deselect 5 → leave opt 8 + opt 2
+    assert pg.locator('#bar-thumbs .bar-slot').count() == 8
+    pg.click('#collage-1 .opt[data-opt="5"]')  # deselect 5 → leave hole where it was
     assert pg.locator('#bar-thumbs .preview-card').count() == 2
-    assert '#1' in pg.text_content('#bar-thumbs')
+    assert pg.locator('#bar-thumbs .bar-slot').count() == 8
+    # clear a filled slot with × (hole, no collapse)
+    pg.locator('#bar-thumbs .preview-card .preview-x').first.click()
+    assert pg.locator('#bar-thumbs .preview-card').count() == 1
+    assert pg.locator('#bar-thumbs .bar-slot-empty').count() == 7
     pg.click('#collage-2 .opt[data-opt="3"]')
     with pg.expect_download() as dl_info: pg.click('#lineup-download')
     dl = dl_info.value; dl.save_as('tools/out/lineup-demo.png')
@@ -220,7 +236,48 @@ with sync_playwright() as p:
     pg.evaluate("document.querySelector('.bar').scrollIntoView()"); pg.wait_for_timeout(200)
     pg.screenshot(path='preview-lineup.png')
     assert ext == [], f'lineup made external requests: {ext}'
-    print('PASS final lineup: live, native-res crops', dims, ', ordered preview, local PNG download', im.size)
+    print('PASS pack slots: fixed 8 boxes, holes, clear-to-empty, native download', dims, im.size)
+    ctx.close()
+
+    # 4a2) PACK SLOTS: drag swap into hole, submit payload has nulls (FormSubmit mocked)
+    posts.clear(); ctx = new_ctx(viewport={'width': 1280, 'height': 900}); pg = ctx.new_page(); watch(pg)
+    pg.route('**/assets/project.js*', mock_js); pg.route(FS, mock_api)
+    pg.goto(B + 'demo/?test=1'); pass_who(pg); pg.wait_for_selector('#bar-thumbs .bar-slot')
+    # Fill slots 1,2,3 then clear slot 1 with × → hole at #1; picks still on collages for submit gate
+    pg.click('#collage-1 .opt[data-opt="5"]')
+    pg.click('#collage-2 .opt[data-opt="2"]')
+    pg.click('#collage-3 .opt[data-opt="8"]')
+    assert pg.locator('#bar-thumbs .preview-card').count() == 3
+    # × on first filled card clears slot 1 (hole); collage pick remains so submit still enabled after name
+    pg.locator('#bar-thumbs .preview-card[data-idx="0"] .preview-x').click()
+    assert pg.locator('#bar-thumbs .bar-slot-empty[data-idx="0"]').count() == 1
+    assert pg.locator('#bar-thumbs .preview-card').count() == 2
+    # Drag slot #2 (idx 1) onto empty slot #1 (idx 0) → move
+    src = pg.locator('#bar-thumbs .preview-card[data-idx="1"]')
+    dst = pg.locator('#bar-thumbs .bar-slot-empty[data-idx="0"]')
+    sb, db = src.bounding_box(), dst.bounding_box()
+    pg.mouse.move(sb['x'] + sb['width']/2, sb['y'] + sb['height']/2)
+    pg.mouse.down(); pg.wait_for_timeout(40)
+    pg.mouse.move(db['x'] + db['width']/2, db['y'] + db['height']/2, steps=12)
+    pg.wait_for_timeout(80); pg.mouse.up(); pg.wait_for_timeout(200)
+    pg.evaluate("document.querySelector('.bar').scrollIntoView()"); pg.wait_for_timeout(150)
+    pg.screenshot(path='preview-pack-slots-drag.png')
+    # Submit and inspect lineup nulls
+    pg.fill('input[name=name]', 'Pack Tester')
+    pg.click('#submit'); pg.wait_for_selector('#confirm:not([hidden])')
+    post = [r for r in posts if r.method == 'POST'][-1]
+    body = json.loads(post.post_data)
+    m = re.fullmatch(r'HUSHPICKS_JSON_BEGIN (.*) HUSHPICKS_JSON_END', body['payload'])
+    data = json.loads(m.group(1))
+    assert data.get('packSize') == 8, data.get('packSize')
+    assert isinstance(data['lineup'], list) and len(data['lineup']) == 8, data['lineup']
+    assert data['lineup'].count(None) >= 1, data['lineup']
+    assert 'NEW / remake requested' in data['summary']
+    filled = [e for e in data['lineup'] if e]
+    assert all('collage' in e and 'option' in e and 'previewIndex' in e for e in filled)
+    pg.screenshot(path='preview-pack-slots-submit.png')
+    open('tools/sample-payload-pack.json', 'w').write(json.dumps(data, indent=2))
+    print('PASS pack slots drag+submit: lineup len', len(data['lineup']), 'nulls', data['lineup'].count(None), 'summary ok')
     ctx.close()
 
     # 4b) name is required: all picked, empty name -> inline error, no POST
@@ -247,7 +304,7 @@ with sync_playwright() as p:
     assert pg.locator('#test-banner').count() == 1, 'test mode must persist in the tab (sessionStorage)'
     pg.click('#collage-1 .opt[data-opt="5"]'); pg.click('#collage-2 .opt[data-opt="2"]')
     pg.click('#test-clear'); pg.wait_for_timeout(200)
-    assert pg.locator('.opt.sel').count() == 0 and pg.text_content('#bar-count').startswith('0/3 collages')
+    assert pg.locator('.opt.sel').count() == 0 and '0 of 8 pack slots filled' in pg.text_content('#bar-count')
     pg.click('#collage-1 .opt[data-opt="5"]'); pg.click('#collage-2 .opt[data-opt="2"]'); pg.click('#collage-3 .opt[data-opt="8"]')
     pg.fill('#client-name', 'Hush'); pg.click('#submit'); pg.wait_for_selector('#confirm:not([hidden])')
     sent = json.loads([r for r in posts if r.method == 'POST'][0].post_data)
