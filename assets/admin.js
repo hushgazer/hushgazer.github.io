@@ -3,7 +3,10 @@
    Client pages never show a login: the sign-in form lives only on the unlinked /admin/ page.
    A static site can't edit itself, so each action is emailed (FormSubmit, same inbox as the
    picks) with an HMAC signature; the picks routine verifies it with tools/admin_action.py,
-   updates project.json / projects.json, commits, pushes. Until then this tab shows pending.
+   updates project.json / projects.json, commits, pushes.
+   OPTIMISTIC UI: this tab flips to Hidden / Shown / Removed the moment you confirm — before
+   the email round-trip — so Hide never feels stuck waiting on publish. The live public site
+   updates after admin_action.py --push + Pages.
    Project pages: hide/delete individual collages (not the whole project). Home still has
    project-level Hide/Delete. Hide and Delete always ask for confirmation first. */
 (function () {
@@ -99,10 +102,18 @@
     });
   }
   var LABEL = { public: 'Public', hidden: 'Hidden', gone: 'Removed' };
-  var PEND = { hide: 'Hide requested', unhide: 'Unhide requested', delete: 'Delete requested' };
+  // Pending actions show the TARGET state immediately (optimistic), with a quiet publishing hint.
+  var PEND_CHIP = {
+    hide: { text: 'Hidden', cls: 'hidden' },
+    unhide: { text: 'Public', cls: 'public' },
+    delete: { text: 'Removed', cls: 'gone' }
+  };
   function chip(st) {
-    var t = st.pend ? PEND[st.pend] + ' \u00b7 updates at next publish' : LABEL[st.pub];
-    return el('span', { class: 'adm-chip adm-' + (st.pend ? 'pending' : st.pub) }, t);
+    if (st.pend && PEND_CHIP[st.pend]) {
+      var pc = PEND_CHIP[st.pend];
+      return el('span', { class: 'adm-chip adm-' + pc.cls, title: 'Publishing to the live site…' }, pc.text);
+    }
+    return el('span', { class: 'adm-chip adm-' + st.pub }, LABEL[st.pub]);
   }
   // action buttons for one project; onDone re-renders
   function controls(slug, title, entry, msg, onDone) {
@@ -112,16 +123,24 @@
     function act(action) {
       if (action === 'hide' && !window.confirm('Hide \u201c' + title + '\u201d?\n\nClients will see it as not available until you Unhide. Are you sure?')) return;
       if (action === 'delete' && !window.confirm('Delete \u201c' + title + '\u201d permanently?\n\nClients lose access right away and the project is removed from the site at the next publish. This can\u2019t be undone from here.')) return;
-      box.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
-      msg.textContent = 'Sending\u2026';
+      // Optimistic: flip this tab instantly, then email the signed request in the background.
+      setPending(slug, action);
+      onDone();
+      msg.textContent = action === 'delete' ? ('Removed \u201c' + title + '\u201d here. Publishing\u2026')
+        : action === 'hide' ? ('Hidden \u201c' + title + '\u201d here. Publishing to the live site\u2026')
+        : ('Shown \u201c' + title + '\u201d here. Publishing to the live site\u2026');
       send(action, slug, title).then(function (r) {
-        if (!r.local) setPending(slug, action);   // delete also counts as hidden right away
-        msg.textContent = r.local ? 'Local preview: nothing emailed. To apply it here run: ' + r.cmd
-          : (action === 'delete' ? 'Delete requested for ' : action === 'hide' ? 'Hide requested for ' : 'Unhide requested for ') + title + '. It goes live at the next publish (usually a few minutes).';
-        onDone();
+        if (r.local) {
+          msg.textContent = 'Local preview: UI updated here. To publish run: ' + r.cmd;
+          return;
+        }
+        msg.textContent = action === 'delete' ? ('Removed \u201c' + title + '\u201d. Live site updates after publish.')
+          : action === 'hide' ? ('Hidden \u201c' + title + '\u201d. Live site updates after publish (usually under a few minutes).')
+          : ('Shown \u201c' + title + '\u201d. Live site updates after publish (usually under a few minutes).');
       }, function (e) {
-        msg.textContent = 'Could not send (' + (e && e.message || 'network error') + '). Nothing changed, try again.';
-        box.querySelectorAll('button').forEach(function (b) { b.disabled = false; });
+        setPending(slug, null);
+        onDone();
+        msg.textContent = 'Could not send (' + (e && e.message || 'network error') + '). Reverted — try again.';
       });
     }
     var hidden = st.hidden;
@@ -248,29 +267,32 @@
       function draw() {
         var st = cState();
         box.textContent = '';
-        var chipT = st.pend
-          ? ({ 'hide-collage': 'Hide requested', 'show-collage': 'Show requested', 'delete-collage': 'Delete requested' }[st.pend] + ' \u00b7 live in a few minutes')
-          : (st.hidden ? 'Hidden from clients' : 'Visible');
-        box.appendChild(el('span', { class: 'adm-chip adm-' + (st.pend ? 'pending' : (st.hidden ? 'hidden' : 'public')) }, chipT));
+        var chipT, chipCls;
+        if (st.pend === 'hide-collage' || (!st.pend && st.hidden)) { chipT = 'Hidden from clients'; chipCls = 'hidden'; }
+        else if (st.pend === 'show-collage') { chipT = 'Visible'; chipCls = 'public'; }
+        else if (st.pend === 'delete-collage') { chipT = 'Deleted'; chipCls = 'gone'; }
+        else { chipT = 'Visible'; chipCls = 'public'; }
+        box.appendChild(el('span', { class: 'adm-chip adm-' + chipCls, title: st.pend ? 'Publishing to the live site\u2026' : '' }, chipT));
         if (st.pend === 'delete-collage') return;
         function act(action) {
           if (action === 'hide-collage' && !window.confirm('Hide this collage from Julius and Adam?\n\nAre you sure? You can Show it again later.')) return;
           if (action === 'delete-collage' && !window.confirm('Delete this collage permanently?\n\n\u201c' + label + '\u201d (' + file + ') will be removed from the site. This can\u2019t be undone from here.')) return;
-          box.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
-          if (msg) msg.textContent = 'Sending\u2026';
+          // Optimistic: grey out / flip chip immediately, then send.
+          setPending(key, action);
+          if (onChange) onChange(action, { local: false, optimistic: true });
+          draw();
+          if (msg) msg.textContent = (action === 'delete-collage' ? 'Deleted' : action === 'hide-collage' ? 'Hidden' : 'Shown')
+            + ' \u201c' + label + '\u201d here. Publishing\u2026';
           send(action, slug, label, { file: file }).then(function (r) {
-            if (!r.local) setPending(key, action);
-            else if (msg) msg.textContent = 'Local preview: nothing emailed. To apply + publish run: ' + r.cmd;
-            else { /* keep */ }
-            if (!r.local && msg) {
-              msg.textContent = (action === 'delete-collage' ? 'Delete' : action === 'hide-collage' ? 'Hide' : 'Show')
-                + ' requested for ' + label + '. Goes live after the automation runs (usually a few minutes).';
-            }
-            if (onChange) onChange(action, r);
+            if (r.local && msg) msg.textContent = 'Local preview: UI updated here. To publish run: ' + r.cmd;
+            else if (msg) msg.textContent = (action === 'delete-collage' ? 'Deleted' : action === 'hide-collage' ? 'Hidden' : 'Shown')
+              + ' \u201c' + label + '\u201d. Live site updates after publish.';
             draw();
           }, function (e) {
-            if (msg) msg.textContent = 'Could not send (' + (e && e.message || 'network error') + '). Nothing changed, try again.';
-            box.querySelectorAll('button').forEach(function (b) { b.disabled = false; });
+            setPending(key, null);
+            if (onChange) onChange('revert-' + action, { error: true });
+            draw();
+            if (msg) msg.textContent = 'Could not send (' + (e && e.message || 'network error') + '). Reverted — try again.';
           });
         }
         var hidden = st.hidden;

@@ -7,9 +7,8 @@ permissions:
   contents: read
   pages: write
   id-token: write
-# cancel-in-progress: false — cancelling a mid-flight Pages deploy can wedge the
-# github-pages environment and leave later runs queued forever (GitHub starter
-# workflow uses false for the same reason).
+# cancel-in-progress MUST stay false — cancelling a mid-flight Pages deploy can wedge
+# the github-pages environment (runs stay queued forever). GitHub starter uses false.
 concurrency:
   group: pages
   cancel-in-progress: false
@@ -22,9 +21,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Stage public site (skip tools / CI noise)
+        run: |
+          mkdir -p _site
+          # Copy only what the client site needs (keeps artifact small + fast).
+          shopt -s dotglob
+          for item in admin assets demo kraken lion projects index.html project.html 404.html .nojekyll; do
+            if [ -e "$item" ]; then cp -a "$item" _site/; fi
+          done
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: .
+          path: _site
       - id: deployment
         uses: actions/deploy-pages@v4

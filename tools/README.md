@@ -122,6 +122,10 @@ no passwords, no trackers, no external scripts. Picks are emailed through FormSu
   page; the project URL shows "This project isn't available right now" to anyone not signed
   in. **Hidden collage** (`"hidden": true` on a collage entry in `projects/<slug>/project.json`):
   omitted for clients; admin still sees it greyed.
+* **Optimistic UI**: Hide / Unhide / Delete flip this browser tab immediately (chip +
+  greyed card / collage). The signed FormSubmit request still goes out for audit +
+  `admin_action.py --push`; the public site updates after that push + Pages. On send
+  failure the tab reverts.
 * Each button click emails a signed request through FormSubmit (same `FORM_TARGET` as the
   picks, copied via `_cc` to the bot inbox). Subjects:
   - project: `Hush admin: <hide|unhide|delete> <slug>`

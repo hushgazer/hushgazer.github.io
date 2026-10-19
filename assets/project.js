@@ -673,8 +673,10 @@
       var ctrls = window.HushAdmin.collageControls(slug, c, msgEl, function (action) {
         if (action === 'hide-collage') {
           c.hidden = true; sec.classList.add('adm-collage-hidden');
-        } else if (action === 'show-collage') {
+        } else if (action === 'show-collage' || action === 'revert-hide-collage') {
           c.hidden = false; sec.classList.remove('adm-collage-hidden');
+        } else if (action === 'revert-show-collage') {
+          c.hidden = true; sec.classList.add('adm-collage-hidden');
         } else if (action === 'delete-collage') {
           // Optimistic remove: drop this collage from the live admin view.
           var idx = collages.indexOf(c);
