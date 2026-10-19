@@ -26,11 +26,11 @@ with sync_playwright() as p:
     assert pg.locator('#who-switch').count() == 0
     pg.screenshot(path=OUT + '/test-julius.png')
     for i in range(1, 11): pg.click('#collage-%d .opt[data-opt="2"]' % i)
-    assert pg.locator('#lineup .preview-card').count() == 10
+    assert pg.locator('#bar-thumbs .preview-card').count() == 10
     assert pg.locator('#picks li').count() == 10
     pg.click('#submit'); pg.wait_for_selector('#confirm:not([hidden])')
     assert 'Nothing was emailed' in pg.text_content('#confirm'); assert sent == [], sent
-    pg.evaluate("document.getElementById('lineup').scrollIntoView()"); pg.wait_for_timeout(300)
+    pg.evaluate("document.querySelector('.bar').scrollIntoView()"); pg.wait_for_timeout(300)
     pg.screenshot(path=OUT + '/test-julius-lineup.png')
     pg.click('.tb-who[data-as="Adam"]'); pg.wait_for_selector('#client-badge:not([hidden])')
     assert 'Previewing as Adam' in pg.text_content('#client-badge')

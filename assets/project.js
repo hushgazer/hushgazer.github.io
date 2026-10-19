@@ -269,58 +269,42 @@
     cv.getContext('2d').drawImage(img, bx.x, bx.y, bx.w, bx.h, 0, 0, bx.w, bx.h);
     return cv;
   }
-  function renderLineup() {
-    if (mode === 'locked' || !project) return;
+  // Final lineup lives in the sticky bottom bar (#bar-thumbs). Remove any legacy
+  // mid-page #lineup section from older page copies.
+  function removeLegacyLineup() {
     var sec = document.getElementById('lineup');
-    if (!sec) {
-      sec = el('section', { id: 'lineup', class: 'lineup', 'aria-labelledby': 'lineup-h' });
-      var hd = el('div', { class: 'lineup-head' });
-      hd.appendChild(el('h2', { id: 'lineup-h' }, 'Final lineup'));
-      var dl = el('button', { type: 'button', class: 'btn btn-secondary', id: 'lineup-download' }, 'Download lineup');
-      dl.addEventListener('click', downloadLineup);
-      hd.appendChild(dl); sec.appendChild(hd);
-      sec.appendChild(el('p', { class: 'privacy' }, 'Your picks in the order you selected them. Drag a card to reorder. Download saves a PNG to your device; nothing is uploaded.'));
-      sec.appendChild(el('div', { class: 'lineup-strip', id: 'lineup-strip', role: 'list' }));
-      app.insertBefore(sec, document.getElementById('opinions') || document.getElementById('summary'));
-    }
-    var strip = document.getElementById('lineup-strip'); strip.textContent = '';
+    if (sec) sec.remove();
+  }
+  function renderBarPreview() {
+    var bar = document.getElementById('bar-thumbs');
+    if (!bar) return;
+    bar.textContent = '';
+    bar.setAttribute('role', 'list');
+    bar.setAttribute('aria-label', 'Your lineup in selection order. Drag to reorder.');
     if (!lineupOrder.length) {
-      strip.appendChild(el('p', { class: 'lineup-empty', id: 'lineup-empty' }, 'Tap characters above — they’ll appear here in order.'));
-      document.getElementById('lineup-download').disabled = true;
+      bar.appendChild(el('span', { class: 'bar-empty' }, 'Tap characters — they’ll appear here in order'));
       return;
     }
     lineupOrder.forEach(function (e, idx) {
-      var fig = el('figure', {
-        class: 'preview-card',
+      var card = el('div', {
+        class: 'bar-card preview-card',
         role: 'listitem',
         'data-idx': String(idx),
         'data-c': String(e.c),
         'data-o': String(e.o),
         tabindex: '0',
         'aria-grabbed': 'false',
-        'aria-label': 'Preview ' + (idx + 1) + ', Collage ' + (e.c + 1) + ' option ' + e.o + '. Drag to reorder.'
+        'aria-label': 'Pick ' + (idx + 1) + '. Drag to reorder.'
       });
-      var badge = el('span', { class: 'preview-badge', 'aria-hidden': 'true' }, '#' + (idx + 1));
-      fig.appendChild(badge);
-      var grip = el('span', { class: 'preview-grip', 'aria-hidden': 'true' }, '⠿');
-      fig.appendChild(grip);
-      var cv = nativeCrop(e.c, e.o) || cropCanvas(e.c, e.o, 220);
-      if (cv) {
-        cv.setAttribute('role', 'img');
-        cv.setAttribute('aria-label', 'Collage ' + (e.c + 1) + ', option ' + e.o);
-        fig.appendChild(cv);
-      }
-      var cap = el('figcaption');
-      cap.appendChild(el('strong', null, 'Preview ' + (idx + 1)));
-      cap.appendChild(el('span', { class: 'preview-ref' }, 'Collage ' + (e.c + 1) + ' · option ' + e.o));
-      fig.appendChild(cap);
-      bindPreviewDrag(fig, idx);
-      strip.appendChild(fig);
+      card.appendChild(el('span', { class: 'preview-badge sm', 'aria-hidden': 'true' }, '#' + (idx + 1)));
+      var cv = cropCanvas(e.c, e.o, 72);
+      if (cv) { cv.setAttribute('aria-hidden', 'true'); card.appendChild(cv); }
+      bindPreviewDrag(card, idx);
+      bar.appendChild(card);
     });
-    document.getElementById('lineup-download').disabled = false;
   }
 
-  // Pointer-based drag (mouse + touch) to reorder preview cards.
+  // Pointer-based drag (mouse + touch) to reorder preview cards in the sticky bar.
   var dragState = null;
   function bindPreviewDrag(fig, idx) {
     fig.addEventListener('pointerdown', function (ev) {
@@ -338,12 +322,11 @@
     });
   }
   function startPreviewDrag(fig, fromIdx, ev) {
-    var strip = document.getElementById('lineup-strip');
+    var strip = document.getElementById('bar-thumbs');
     var rect = fig.getBoundingClientRect();
     dragState = {
       from: fromIdx, over: fromIdx, fig: fig,
       ox: ev.clientX - rect.left, oy: ev.clientY - rect.top,
-      w: rect.width, h: rect.height,
       ghost: null
     };
     fig.classList.add('is-dragging');
@@ -356,7 +339,6 @@
     ghost.style.height = rect.height + 'px';
     ghost.style.left = (ev.clientX - dragState.ox) + 'px';
     ghost.style.top = (ev.clientY - dragState.oy) + 'px';
-    // re-draw canvases into ghost (clone is blank)
     var srcCvs = fig.querySelectorAll('canvas');
     var dstCvs = ghost.querySelectorAll('canvas');
     for (var i = 0; i < srcCvs.length; i++) {
@@ -384,7 +366,7 @@
         else if (others.length) others[others.length - 1].classList.add('drop-after');
       }
     }
-    function onUp(e) {
+    function onUp() {
       if (!dragState) return;
       try { fig.releasePointerCapture(ev.pointerId); } catch (err) {}
       fig.removeEventListener('pointermove', onMove);
@@ -421,7 +403,7 @@
     var parts = [];
     lineupOrder.forEach(function (e, idx) {
       var cv = nativeCrop(e.c, e.o);
-      if (cv) parts.push({ cv: cv, label: '#' + (idx + 1) + '  C' + (e.c + 1) + ' #' + e.o });
+      if (cv) parts.push({ cv: cv, label: '#' + (idx + 1) });
     });
     if (!parts.length) return;
     var pad = 24, lab = 64, maxH = Math.max.apply(null, parts.map(function (p) { return p.cv.height; }));
@@ -556,40 +538,46 @@
   }
 
   function renderSummary() {
-    var list = document.getElementById('picks'), bar = document.getElementById('bar-thumbs');
-    list.textContent = ''; bar.textContent = '';
+    removeLegacyLineup();
+    var list = document.getElementById('picks');
+    list.textContent = '';
     var done = 0, totalPicks = lineupOrder.length;
     collages.forEach(function (c, i) { if ((picks[i] || []).length) done++; });
+    // Ensure a Download button exists in the review section (not a mid-page lineup).
+    var sumH = document.getElementById('sum-h');
+    if (sumH && !document.getElementById('lineup-download')) {
+      var wrap = el('div', { class: 'lineup-head sum-head' });
+      sumH.replaceWith(wrap);
+      wrap.appendChild(sumH);
+      var dl = el('button', { type: 'button', class: 'btn btn-secondary', id: 'lineup-download' }, 'Download lineup');
+      dl.addEventListener('click', downloadLineup);
+      wrap.appendChild(dl);
+    }
+    var dlBtn = document.getElementById('lineup-download');
+    if (dlBtn) dlBtn.disabled = !lineupOrder.length;
+
     if (!lineupOrder.length) {
       var emptyLi = el('li', { class: 'lineup-hint' });
       emptyLi.appendChild(el('span', { class: 'ph soft', 'aria-hidden': 'true' }, '＋'));
-      emptyLi.appendChild(document.createTextNode('Tap characters above — they’ll appear here in order.'));
+      emptyLi.appendChild(document.createTextNode('Tap characters above — they’ll appear in the bar below in order. Drag to reorder.'));
       list.appendChild(emptyLi);
     } else {
       lineupOrder.forEach(function (e, idx) {
-        var label = (collages[e.c] && collages[e.c].label) || ('Collage ' + (e.c + 1));
         var li = el('li', { class: 'preview-li' });
-        var a = el('a', { href: '#collage-' + (e.c + 1), title: 'Preview ' + (idx + 1) + ' · ' + label + ' option ' + e.o });
+        var a = el('a', { href: '#collage-' + (e.c + 1), title: 'Pick #' + (idx + 1) });
         a.appendChild(el('span', { class: 'preview-badge sm', 'aria-hidden': 'true' }, '#' + (idx + 1)));
         a.appendChild(cropCanvas(e.c, e.o, 150));
-        a.appendChild(document.createTextNode('Preview ' + (idx + 1)));
-        a.appendChild(el('span', { class: 'preview-ref' }, label + ' · option ' + e.o));
+        a.appendChild(document.createTextNode('#' + (idx + 1)));
         li.appendChild(a); list.appendChild(li);
-
-        var ba = el('a', { href: '#collage-' + (e.c + 1), title: 'Preview ' + (idx + 1) });
-        ba.appendChild(el('span', { class: 'preview-badge sm', 'aria-hidden': 'true' }, '#' + (idx + 1)));
-        ba.appendChild(cropCanvas(e.c, e.o, 60));
-        ba.appendChild(document.createTextNode('P' + (idx + 1)));
-        bar.appendChild(ba);
       });
     }
-    renderLineup();
+    renderBarPreview();
     renderOpinions();
     var all = done === collages.length && collages.length > 0;
     document.getElementById('submit').disabled = !all;
-    document.getElementById('bar-count').textContent = done + '/' + collages.length + ' collages · ' + totalPicks + ' pick' + (totalPicks === 1 ? '' : 's');
+    document.getElementById('bar-count').textContent = done + '/' + collages.length + ' · ' + totalPicks + ' pick' + (totalPicks === 1 ? '' : 's');
     document.getElementById('need').textContent = all
-      ? ('All collages have a pick (' + totalPicks + ' total) — ready to submit. Drag cards above to reorder.')
+      ? ('All collages have a pick (' + totalPicks + ' total) — ready to submit. Drag the bar below to reorder.')
       : ((collages.length - done) + ' collage(s) still need at least one pick.');
   }
 
@@ -661,7 +649,7 @@
       var li = el('li', { class: 'preview-li' });
       li.appendChild(el('span', { class: 'preview-badge sm', 'aria-hidden': 'true' }, '#' + (idx + 1)));
       li.appendChild(cropCanvas(e.collage - 1, e.option, 150));
-      li.appendChild(document.createTextNode('Preview ' + (idx + 1) + ' · Collage ' + e.collage + ' option ' + e.option));
+      li.appendChild(document.createTextNode('#' + (idx + 1)));
       strip.appendChild(li);
     });
     box.appendChild(strip);

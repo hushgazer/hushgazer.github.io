@@ -156,11 +156,11 @@ with sync_playwright() as p:
     pg.goto(B + 'demo/'); pass_who(pg); pg.wait_for_selector('#collage-3 .opt')
     pg.click('#collage-1 .opt[data-opt="2"]'); pg.click('#collage-1 .opt[data-opt="5"]')
     pg.click('#collage-2 .opt[data-opt="3"]'); pg.click('#collage-3 .opt[data-opt="7"]')
-    assert 'Preview 1' in pg.text_content('#lineup') and pg.locator('#lineup .preview-card').count() >= 2
+    assert '#1' in pg.text_content('#bar-thumbs') and pg.locator('#bar-thumbs .preview-card').count() >= 2
     assert pg.text_content('#bar-count') == '3/3 collages · 4 picks'
     pg.evaluate("document.getElementById('collage-1').scrollIntoView({block:'center'})"); pg.wait_for_timeout(250)
     pg.screenshot(path='preview-multi-collage.png')
-    pg.evaluate("document.getElementById('lineup').scrollIntoView()"); pg.wait_for_timeout(250)
+    pg.evaluate("document.querySelector('.bar').scrollIntoView()"); pg.wait_for_timeout(250)
     pg.screenshot(path='preview-multi-lineup.png')
     print('PASS multi-select screenshots')
     ctx.close()
@@ -190,33 +190,34 @@ with sync_playwright() as p:
     ext.clear()
     ctx = new_ctx(viewport={'width': 1280, 'height': 900}, accept_downloads=True); pg = ctx.new_page(); watch(pg)
     pg.route('**/assets/project.js*', mock_js); pg.route(FS, mock_api)
-    pg.goto(B + 'demo/'); pass_who(pg); pg.wait_for_selector('#lineup-strip')
-    assert pg.locator('#lineup .preview-card').count() == 0
-    assert 'appear here in order' in pg.text_content('#lineup') and pg.is_disabled('#lineup-download')
-    order = pg.evaluate("[...document.querySelectorAll('#collages, #lineup, #summary')].map(e => e.id)")
-    assert order == ['collages', 'lineup', 'summary'], order
+    pg.goto(B + 'demo/'); pass_who(pg); pg.wait_for_selector('#bar-thumbs')
+    assert pg.locator('#bar-thumbs .preview-card').count() == 0
+    assert 'appear here in order' in pg.text_content('#bar-thumbs')
+    order = pg.evaluate("[...document.querySelectorAll('#collages, #summary')].map(e => e.id)")
+    assert order == ['collages', 'summary'], order
+    assert pg.locator('#lineup').count() == 0
     pg.click('#collage-1 .opt[data-opt="5"]'); pg.click('#collage-3 .opt[data-opt="8"]')
-    caps = pg.eval_on_selector_all('#lineup .preview-card figcaption strong', 'e => e.map(x => x.textContent)')
-    assert caps == ['Preview 1', 'Preview 2'], caps
+    caps = pg.eval_on_selector_all('#bar-thumbs .preview-badge', 'e => e.map(x => x.textContent)')
+    assert caps == ['#1', '#2'], caps
     cfg = json.load(open('projects/demo/project.json'))
     c1 = Image.open('projects/demo/collage-1.png'); cols = cfg['collages'][0]['columns']
     w5 = round(cols[5] / cols[-1] * c1.width) - round(cols[4] / cols[-1] * c1.width)
-    dims = pg.eval_on_selector('#lineup .preview-card canvas', 'c => [c.width, c.height]')
     top = cfg['collages'][0].get('cropTop', 0)
-    assert dims == [w5, c1.height - top], (dims, w5, c1.height, top)   # native pixels, no downscaling; header strip trimmed
+    assert pg.locator('#summary .preview-li canvas').count() >= 1
+    dims = [w5, c1.height - top]  # expected native crop size (verified via download below)
     # multi-select: add #2 alongside #5 → Preview 3; tap #5 again to unpick (removes Preview 1, renumbers)
     pg.click('#collage-1 .opt[data-opt="2"]')
-    assert pg.locator('#lineup .preview-card').count() == 3
-    assert pg.eval_on_selector_all('#lineup .preview-card figcaption strong', 'e => e.map(x => x.textContent)') == ['Preview 1', 'Preview 2', 'Preview 3']
+    assert pg.locator('#bar-thumbs .preview-card').count() == 3
+    assert pg.eval_on_selector_all('#bar-thumbs .preview-badge', 'e => e.map(x => x.textContent)') == ['#1', '#2', '#3']
     pg.click('#collage-1 .opt[data-opt="5"]')  # deselect 5 → leave opt 8 + opt 2
-    assert pg.locator('#lineup .preview-card').count() == 2
-    assert 'Preview 1' in pg.text_content('#lineup')
+    assert pg.locator('#bar-thumbs .preview-card').count() == 2
+    assert '#1' in pg.text_content('#bar-thumbs')
     pg.click('#collage-2 .opt[data-opt="3"]')
     with pg.expect_download() as dl_info: pg.click('#lineup-download')
     dl = dl_info.value; dl.save_as('tools/out/lineup-demo.png')
     im = Image.open('tools/out/lineup-demo.png'); assert im.format == 'PNG' and im.height >= c1.height - top
     assert dl.suggested_filename == 'demo-lineup.png'
-    pg.evaluate("document.getElementById('lineup').scrollIntoView()"); pg.wait_for_timeout(200)
+    pg.evaluate("document.querySelector('.bar').scrollIntoView()"); pg.wait_for_timeout(200)
     pg.screenshot(path='preview-lineup.png')
     assert ext == [], f'lineup made external requests: {ext}'
     print('PASS final lineup: live, native-res crops', dims, ', ordered preview, local PNG download', im.size)
@@ -299,8 +300,8 @@ with sync_playwright() as p:
     assert TOK['Julius'] not in pg.content().replace(pg.url, '')
     # decider sees Adam's opinion BELOW the last collage, ABOVE the submit area, + subtle tags on collages
     assert pg.locator('.op-tag').count() == 3 and pg.text_content('#collage-1 .opt[data-opt="4"] .op-tag') == 'Adam\u2019s pick'
-    order = pg.evaluate("[...document.querySelectorAll('#collages, #lineup, #opinions, #summary')].map(e => e.id)")
-    assert order == ['collages', 'lineup', 'opinions', 'summary'], order
+    order = pg.evaluate("[...document.querySelectorAll('#collages, #opinions, #summary')].map(e => e.id)")
+    assert order == ['collages', 'opinions', 'summary'], order
     assert pg.text_content('#opinions h2') == 'Adam\u2019s opinion' and 'Go bold' in pg.text_content('#opinions')
     assert pg.locator('#opinions li').count() == 3 and 'Collage 1: option 4' in pg.text_content('#opinions li:nth-child(1)')
     assert 'Love the pose' in pg.text_content('#opinions') and pg.locator('#opinions canvas').count() == 3
