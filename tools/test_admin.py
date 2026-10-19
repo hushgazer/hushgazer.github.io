@@ -80,7 +80,7 @@ with sync_playwright() as p:
     assert pg.input_value('#admin-name') == 'Hush' and pg.locator('#admin-name option').count() == 1
     pg.fill('#admin-pass', PRIV['password']); pg.click('#login-btn'); pg.wait_for_url(B); pg.wait_for_selector('#admin-bar')
     pg.screenshot(path='preview-admin-home.png')
-    rows = pg.locator('.admin-list li'); assert rows.count() == 3, rows.count()
+    rows = pg.locator('.admin-list li[data-slug]'); assert rows.count() == 3, rows.count()
     assert 'Hidden' in pg.text_content('li[data-slug=demo] .adm-chip')
     pg.goto(B + 'demo/'); pg.wait_for_selector('.collage'); assert pg.locator('#admin-bar').count() == 1
     assert pg.locator('#admin-bar [data-act=hide]').count() == 0, 'project bar must not hide whole project'
@@ -97,7 +97,7 @@ with sync_playwright() as p:
     pg.locator('.adm-collage-actions [data-act=hide-collage]').first.click()
     pg.wait_for_timeout(200)
     assert posts == []
-    pg.click('#admin-signout'); pg.wait_for_url(B)
+    pg.click('#admin-signout'); pg.wait_for_url(re.compile(r'\?who=1'))
     assert pg.locator('#admin-bar').count() == 0 and pg.evaluate("sessionStorage.getItem('hush-admin')") is None
     c.close()
     print('PASS admin sign-in (wrong rejected, Hush ok), all 3 projects listed, local preview no email, sign out')

@@ -29,9 +29,17 @@
   // (sessionStorage "hush-test", "hush-test-as"); project.js reads the same keys.
   function sget(k) { try { return sessionStorage.getItem(k) || ''; } catch (e) { return ''; } }
   function sset(k, v) { try { if (v) sessionStorage.setItem(k, v); else sessionStorage.removeItem(k); } catch (e) {} }
+  // Reload this page (minus ?test) so the new test / View-as state renders.
+  // NB: location.replace() to the SAME url + #hash (e.g. after a "#summary" or "#collage-3"
+  // link) is only a same-document scroll, not a reload, so the banner never changed. Drop the
+  // hash and force a real reload when the url would otherwise be unchanged.
   function cleanReload() {
     var q = new URLSearchParams(location.search); q.delete('test');
-    location.replace(location.pathname + (q.toString() ? '?' + q : '') + location.hash);
+    var target = location.pathname + (q.toString() ? '?' + q : '');
+    if (target === location.pathname + location.search) {
+      if (location.hash) { try { history.replaceState(null, '', target); } catch (e) {} }
+      location.reload();
+    } else location.replace(target);
   }
   function testOn() { return sget('hush-test') === '1'; }
   function setTest(on) { sset('hush-test', on ? '1' : ''); if (!on) sset('hush-test-as', ''); cleanReload(); }
@@ -179,8 +187,9 @@
     return b;
   }
 
-  // Orange banner with the "View as" picker. people: [{name, role}] (clients of this project).
+  // Orange banner with the "View as" segmented control. people: [{name, role}] (clients of this project).
   // opts.onClear: optional "Clear my picks" handler (project pages).
+  var previewing = null;   // {name, role} of the client Hush is previewing as (null = Hush / admin view)
   function testBanner(people, opts) {
     opts = opts || {};
     people = (people && people.length ? people : DEFAULT_PEOPLE).concat([{ name: 'Hush', role: 'Admin view' }]);
@@ -189,26 +198,26 @@
     var old = document.getElementById('test-banner'); if (old) old.remove();
     var b = el('div', { class: 'test-banner', role: 'region', id: 'test-banner', 'aria-label': 'Test mode' });
     var w = el('div', { class: 'wrap' });
-    w.appendChild(el('strong', null, 'TEST MODE'));
-    var seg = el('span', { class: 'tb-viewas', role: 'group', 'aria-label': 'View as' });
-    seg.appendChild(el('span', { class: 'tb-lab' }, 'View as:'));
+    w.appendChild(el('strong', { class: 'tb-badge' }, 'Test mode'));
+    var seg = el('div', { class: 'tb-viewas', role: 'group', 'aria-labelledby': 'tb-lab' });
+    seg.appendChild(el('span', { class: 'tb-lab', id: 'tb-lab' }, 'View as'));
+    var track = el('span', { class: 'tb-seg' });
     people.forEach(function (p) {
       var on = p.name === cur;
-      var x = el('button', { type: 'button', class: 'tb-who' + (on ? ' is-on' : ''), 'data-as': p.name, 'aria-pressed': on ? 'true' : 'false' });
-      if (on) x.appendChild(el('span', { class: 'tb-check', 'aria-hidden': 'true' }, '\u2713'));
-      x.appendChild(document.createTextNode(p.name));
+      var x = el('button', { type: 'button', class: 'tb-who' + (on ? ' is-on' : ''), 'data-as': p.name, 'aria-pressed': on ? 'true' : 'false',
+        title: on ? 'Viewing as ' + p.name + (p.role ? ' \u00b7 ' + p.role : '') : 'Switch to viewing as ' + p.name + (p.role ? ' (' + p.role + ')' : '') });
+      x.appendChild(el('span', { class: 'tb-name' }, p.name));
       if (p.role) x.appendChild(el('small', null, p.role));
-      if (!on) x.title = 'Switch to viewing as ' + p.name;
       x.addEventListener('click', function () { if (p.name !== viewAs(people)) { sset('hush-test-as', p.name); cleanReload(); } });
-      seg.appendChild(x);
+      track.appendChild(x);
     });
+    seg.appendChild(track);
     w.appendChild(seg);
-    var curP = people.filter(function (p) { return p.name === cur; })[0] || {};
-    w.appendChild(el('span', { class: 'tb-now', role: 'status' }, '\ud83d\udc41 Viewing as ' + cur + (curP.role ? ' \u00b7 ' + curP.role : '')));
     w.appendChild(el('span', { class: 'tb-note' }, 'Preview only \u00b7 Submit sends nothing'));
     var acts = el('span', { class: 'tb-actions' });
     if (opts.onClear) {
-      var clr = el('button', { type: 'button', id: 'test-clear' }, 'Clear my picks');
+      var clr = el('button', { type: 'button', id: 'test-clear', class: 'tb-clear' }, 'Clear picks');
+      clr.title = 'Clear my picks (this preview only)';
       clr.addEventListener('click', opts.onClear); acts.appendChild(clr);
     }
     var ex = el('button', { type: 'button', id: 'test-exit', class: 'tb-exit' }, 'Exit test mode');
@@ -217,7 +226,27 @@
     w.appendChild(acts); b.appendChild(w);
     var ab = document.getElementById('admin-bar');
     if (ab && ab.nextSibling) document.body.insertBefore(b, ab.nextSibling); else document.body.insertBefore(b, document.body.firstChild);
+    // stick right under the admin bar, whatever its height (it wraps to several rows on phones)
+    function stick() { var a = document.getElementById('admin-bar'); b.style.top = (a ? a.offsetHeight : 0) + 'px'; }
+    stick(); window.addEventListener('resize', stick);
+    var curP = people.filter(function (p) { return p.name === cur; })[0];
+    previewing = cur !== 'Hush' && curP ? curP : null;
+    decorateAcct();
     return b;
+  }
+  // Site-header account strip (assets/who.js) while previewing: "Previewing as Julius", no "Not you? Switch".
+  function decorateAcct() {
+    var box = document.getElementById('who-acct');
+    if (!box) return;
+    var nm = box.querySelector('.who-acct-name'), av = box.querySelector('.who-pill-av'), sw = document.getElementById('who-switch-top');
+    if (!box.getAttribute('data-real')) box.setAttribute('data-real', nm ? nm.textContent : who);
+    var real = box.getAttribute('data-real');
+    var on = !!previewing, name = on ? previewing.name : real;
+    box.classList.toggle('is-preview', on);
+    if (nm) nm.textContent = on ? 'Previewing as ' + name : name;
+    if (av) av.textContent = name.charAt(0).toUpperCase();
+    if (sw) sw.hidden = on || testOn();
+    box.setAttribute('aria-label', on ? 'Signed in as ' + real + ', previewing as ' + name : 'Signed in as ' + real);
   }
   // who Hush is previewing as (falls back to the first client)
   function viewAs(people) {
@@ -231,6 +260,7 @@
     test: active && testOn(),
     viewAs: function (people) { return viewAs(people); },
     testBanner: testBanner,
+    decorateAcct: decorateAcct,
     // is this project hidden for clients (published state)? used by project.js
     renderHome: function (ongoingUl, finishedUl, projects) {
       bar(el('a', { href: ROOT, class: 'adm-link' }, 'All projects'));

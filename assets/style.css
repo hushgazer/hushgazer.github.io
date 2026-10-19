@@ -55,6 +55,8 @@ input:focus,textarea:focus{outline:2px solid var(--gold);border-color:transparen
 .btn{font:inherit;font-weight:700;border:0;border-radius:999px;padding:12px 22px;cursor:pointer;background:linear-gradient(135deg,#f2c063,#d6993a);color:#1a1206}
 .btn:disabled{background:#3a3b47;color:#8a8a99;cursor:not-allowed}
 .privacy{font-size:.82rem;color:var(--muted);margin:4px 0 0}
+.privacy.need-hint{display:inline-block;margin:6px 0 8px;padding:6px 12px;border-radius:999px;font-weight:700;color:#ffb866;background:rgba(255,140,26,.12);border:1px solid rgba(255,140,26,.45)}
+.preview-hush-note{margin:0 0 16px;padding:10px 14px;border-radius:10px;font-weight:600;color:#ffb866;background:rgba(255,140,26,.1);border:1px solid rgba(255,140,26,.45)}
 .confirm{margin-top:16px;padding:14px;border-radius:10px;border:1px solid var(--pick);background:#0f1f19}
 /* sticky bar — base; ordered preview cards styled later */
 footer{color:var(--muted);font-size:.8rem;text-align:center;padding:20px}
@@ -230,14 +232,29 @@ background:rgba(255,255,255,.035);border:1px solid var(--line);border-radius:14p
 
 /* admin test mode: toggle in the admin bar + "View as" picker in the orange banner */
 .adm-test.is-on{background:#ff8c1a;border-color:#ff8c1a;color:#1a0d00}
-.test-banner .tb-viewas{display:inline-flex;flex-wrap:wrap;align-items:center;gap:6px}
-.test-banner .tb-lab{font-weight:700}
-.test-banner button.tb-who{display:inline-flex;align-items:baseline;gap:6px;text-decoration:none;border:2px solid #1a0d00;border-radius:999px;padding:3px 12px;background:transparent}
-.test-banner button.tb-who small{font-weight:600;opacity:.75;font-size:.75rem}
-.test-banner button.tb-who{transition:transform .12s ease,background .12s ease}.test-banner button.tb-who:not(.is-on):hover{background:rgba(26,13,0,.12);transform:translateY(-1px)}.test-banner button.tb-who.is-on{background:#fff;color:#1a0d00;border-color:#fff;box-shadow:0 0 0 3px #1a0d00,0 4px 14px rgba(0,0,0,.35);transform:scale(1.06);cursor:default}.test-banner .tb-check{font-weight:900;color:#1f9d55}.test-banner .tb-now{background:#1a0d00;color:#fff;border-radius:999px;padding:4px 12px;font-size:.85rem;white-space:nowrap}
-.test-banner button.tb-who:focus-visible,.test-banner .tb-exit:focus-visible{outline:3px solid #fff;outline-offset:2px}
-.test-banner .tb-note{font-weight:600;font-size:.8rem;opacity:.85}
-.test-banner button.tb-exit{text-decoration:none;background:#1a0d00;color:#ff8c1a;border-radius:999px;padding:4px 14px}
+.test-banner:has(.tb-viewas) .wrap{flex-wrap:nowrap;gap:10px 16px;padding-top:6px;padding-bottom:6px}
+.test-banner .tb-badge{flex:none;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;background:#1a0d00;color:#ff8c1a;border-radius:6px;padding:4px 8px;line-height:1.1}
+.test-banner .tb-viewas{display:flex;align-items:center;gap:10px;min-width:0}
+.test-banner .tb-lab{font-size:.74rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;opacity:.8;white-space:nowrap}
+.test-banner .tb-seg{display:inline-flex;align-items:stretch;gap:2px;padding:3px;border-radius:999px;background:rgba(26,13,0,.16);box-shadow:inset 0 1px 2px rgba(26,13,0,.25)}
+.test-banner button.tb-who{display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap;text-decoration:none;border:0;border-radius:999px;padding:5px 14px;background:transparent;color:#1a0d00;font-size:.88rem;line-height:1.2;transition:background .14s ease,color .14s ease,box-shadow .14s ease}
+.test-banner button.tb-who small{font-weight:600;font-size:.72rem;opacity:.7}
+.test-banner button.tb-who:not(.is-on):hover{background:rgba(255,255,255,.35)}
+.test-banner button.tb-who.is-on{background:#1a0d00;color:#fff;box-shadow:0 2px 8px rgba(26,13,0,.35);cursor:default}
+.test-banner button.tb-who.is-on small{color:#ffb866;opacity:1}
+.test-banner button.tb-who:not(.is-on) small{display:none}
+@media (min-width:1200px){.test-banner button.tb-who:not(.is-on) small{display:inline}}
+.test-banner button.tb-who:focus-visible,.test-banner .tb-actions button:focus-visible{outline:3px solid #fff;outline-offset:2px}
+.test-banner .tb-note{font-weight:600;font-size:.76rem;opacity:.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.test-banner:has(.tb-viewas) .tb-actions{margin-left:auto;flex:none;display:flex;align-items:center;gap:8px}
+.test-banner .tb-actions button.tb-clear{text-decoration:none;font-size:.82rem;border:1.5px solid rgba(26,13,0,.55);border-radius:999px;padding:4px 12px;white-space:nowrap}
+.test-banner .tb-actions button.tb-clear:hover{background:rgba(26,13,0,.1);border-color:#1a0d00}
+.test-banner button.tb-exit{text-decoration:none;font-size:.82rem;background:#1a0d00;color:#ff8c1a;border:1.5px solid #1a0d00;border-radius:999px;padding:4px 14px;white-space:nowrap}
+.test-banner button.tb-exit:hover{color:#fff}
+@media (max-width:860px){.test-banner:has(.tb-viewas) .wrap{flex-wrap:wrap;gap:6px 10px}.test-banner .tb-viewas{order:3;flex:1 1 100%}.test-banner .tb-seg{flex:1;min-width:0}.test-banner button.tb-who{flex:1;justify-content:center;padding:6px 8px}.test-banner .tb-note{order:1;flex:1 1 auto}.test-banner:has(.tb-viewas) .tb-actions{order:2;margin-left:auto}.test-banner .tb-badge{order:0}}
+@media (max-width:480px){.test-banner .tb-lab{display:none}.test-banner .tb-note{order:4;flex:1 1 100%;text-align:center;font-size:.7rem}.test-banner button.tb-who{font-size:.84rem}}
+.who-acct.is-preview .who-acct-who{background:rgba(255,140,26,.14);border:1px solid rgba(255,140,26,.6);border-radius:999px;padding:3px 12px 3px 3px;color:#ffb866}
+.who-acct.is-preview .who-pill-av{background:linear-gradient(135deg,#ffb866,#ff8c1a)}
 .admin-bar + .test-banner{top:44px}
 /* keep the "Not you? Switch" pill clear of the bottom picks bar (Review & submit) */
 body:has(.bar) .who-pill{bottom:198px}

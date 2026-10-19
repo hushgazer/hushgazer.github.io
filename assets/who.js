@@ -110,6 +110,7 @@
     box.appendChild(who); box.appendChild(sw); box.appendChild(so);
     var hdr = document.querySelector('.site-header .wrap');
     if (hdr) hdr.appendChild(box); else { box.classList.add('is-float'); document.body.appendChild(box); }
+    if (window.HushAdmin && window.HushAdmin.decorateAcct) window.HushAdmin.decorateAcct();   // test-mode preview label
   }
   // Logo / brand: signed out -> open the "Who are you?" popup; signed in -> home as usual.
   document.addEventListener('click', function (ev) {

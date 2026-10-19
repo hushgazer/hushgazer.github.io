@@ -873,9 +873,11 @@
     var ready = filled >= 1 && collages.length > 0;
     document.getElementById('submit').disabled = !ready;
     document.getElementById('bar-count').textContent = filled + ' of ' + packSize + ' pack slots filled';
-    document.getElementById('need').textContent = ready
+    var need = document.getElementById('need');
+    need.textContent = ready
       ? (filled + ' of ' + packSize + ' pack slots filled' + (filled < packSize ? ' · empty slots = remake' : '') + ' — ready to submit. Drag the bar to reorder.')
-      : ('Tap characters above to fill your pack (notes are optional).');
+      : ('\ud83d\udc46 Pick at least one character to submit (tap any character above; notes are optional).');
+    need.classList.toggle('need-hint', !ready);
   }
 
   function cropBox(i, opt) {
@@ -1055,6 +1057,8 @@
     var box = document.getElementById('confirm');
     if (box) { box.hidden = true; box.textContent = ''; }
     var btn = document.getElementById('submit');
+    // Admin test preview: nothing was sent, so keep the picks and leave Submit usable for another try.
+    if (PREVIEW) return;
     if (btn) { btn.disabled = true; btn.textContent = advisor ? 'Opinion sent' : 'Picks sent'; }
     try { localStorage.removeItem(storeKey); } catch (e) {}
   }
@@ -1211,6 +1215,11 @@
         document.getElementById('gate').hidden = ADMIN;   // Hush's admin view: no "personal link" notice
         list.querySelectorAll('.opt').forEach(function (b) { b.disabled = true; });
         list.querySelectorAll('.status').forEach(function (s) { s.textContent = 'View only'; });
+        if (PREVIEW) {   // test mode "View as Hush": say why there is no Submit here
+          var hn = el('p', { class: 'preview-hush-note', id: 'preview-hush-note', role: 'status' },
+            'Admin view is view-only: no picking or Submit here. Switch to a client in the orange Test mode bar to try picking and Submit (nothing is sent).');
+          list.parentNode.insertBefore(hn, list);
+        }
         if (TEST) testBanner();
         return;
       }
