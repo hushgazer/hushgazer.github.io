@@ -122,10 +122,17 @@ no passwords, no trackers, no external scripts. Picks are emailed through FormSu
   page; the project URL shows "This project isn't available right now" to anyone not signed
   in. **Hidden collage** (`"hidden": true` on a collage entry in `projects/<slug>/project.json`):
   omitted for clients; admin still sees it greyed.
-* **Optimistic UI**: Hide / Unhide / Delete flip this browser tab immediately (chip +
-  greyed card / collage). The signed FormSubmit request still goes out for audit +
-  `admin_action.py --push`; the public site updates after that push + Pages. On send
-  failure the tab reverts.
+* **Optimistic UI**: Hide / Unhide flip this tab immediately; **Delete collage** only
+  greys out until FormSubmit accepts, then removes it from the tab. On send failure the
+  tab reverts and shows **NOT PUBLISHED**. The signed FormSubmit request still goes out
+  for audit; `admin_action.py --from-email` always pushes so Pages updates.
+
+* **Publish reliability:** Hide/Delete only stay “done” in the admin UI after FormSubmit
+  **accepts** the request. If send fails, the UI reverts and shows **NOT PUBLISHED**.
+  `--from-email` always `--push`es (unless `--no-push`) so applied actions hit GitHub Pages.
+  FormSubmit can still accept a request while email delivery is delayed (GitHub/webhook
+  outages) — if live does not change within a few minutes, tell the bot; do not assume
+  the collage is gone. No Lion delete-collage emails were found for the lost deletes.
 * Each button click emails a signed request through FormSubmit (same `FORM_TARGET` as the
   picks, copied via `_cc` to the bot inbox). Subjects:
   - project: `Hush admin: <hide|unhide|delete> <slug>`
@@ -147,6 +154,24 @@ no passwords, no trackers, no external scripts. Picks are emailed through FormSu
   stronger password makes forged requests harder. Hidden projects' slugs are still listed in
   the public `projects.json`.
 * Test: `python3 tools/test_admin.py` (server on :8765; FormSubmit mocked).
+
+
+## 8. Display WebP (automatic — faster client loads)
+
+PNG collages in `projects/<slug>/` stay the **full-quality masters** (detect_columns,
+picks sheets, crop math). Clients load a high-quality **`.webp` sibling** for display
+(PNG fallback). Quality default **88** (~¼ the PNG bytes for Lion/Kraken; no downscale).
+
+**You do not run this by hand for normal work.** It runs automatically when:
+* `python3 tools/new_project.py …` finishes (after collages are in place)
+* `python3 tools/admin_action.py` hide/show-collage (refreshes missing/outdated WebPs)
+* delete-collage removes the `.webp` next to the PNG
+
+Rebuild / check sizes anytime:
+```
+python3 tools/optimize_display.py              # all projects
+python3 tools/optimize_display.py lion --force # rebuild one
+```
 
 ## 6. Checks before publishing
 

@@ -96,10 +96,18 @@
       if (FORM_CC) body._cc = FORM_CC;
       return fetch(FORM_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(body) })
         .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) {
-          if (!r.ok || String(j.success) === 'false') throw new Error(j.message || ('HTTP ' + r.status));
+          // Only treat as published-request if FormSubmit clearly accepted it.
+          var ok = r.ok && j && (j.success === true || j.success === 'true' || String(j.success).toLowerCase() === 'true');
+          if (!ok) throw new Error((j && j.message) || ('FormSubmit rejected or failed (HTTP ' + r.status + '). Not published.'));
           return { local: false };
         }); });
     });
+  }
+  function setMsg(msg, text, isErr) {
+    if (!msg) return;
+    msg.textContent = text;
+    if (isErr) msg.classList.add('adm-msg-error');
+    else msg.classList.remove('adm-msg-error');
   }
   var LABEL = { public: 'Public', hidden: 'Hidden', gone: 'Removed' };
   // Pending actions show the TARGET state immediately (optimistic), with a quiet publishing hint.
@@ -126,21 +134,21 @@
       // Optimistic: flip this tab instantly, then email the signed request in the background.
       setPending(slug, action);
       onDone();
-      msg.textContent = action === 'delete' ? ('Removed \u201c' + title + '\u201d here. Publishing\u2026')
-        : action === 'hide' ? ('Hidden \u201c' + title + '\u201d here. Publishing to the live site\u2026')
-        : ('Shown \u201c' + title + '\u201d here. Publishing to the live site\u2026');
+      setMsg(msg, action === 'delete' ? ('Removing \u201c' + title + '\u201d\u2026 sending publish request')
+        : action === 'hide' ? ('Hiding \u201c' + title + '\u201d\u2026 sending publish request')
+        : ('Showing \u201c' + title + '\u201d\u2026 sending publish request'), false);
       send(action, slug, title).then(function (r) {
         if (r.local) {
-          msg.textContent = 'Local preview: UI updated here. To publish run: ' + r.cmd;
+          setMsg(msg, 'Local preview: UI updated here. To publish run: ' + r.cmd, false);
           return;
         }
-        msg.textContent = action === 'delete' ? ('Removed \u201c' + title + '\u201d. Live site updates after publish.')
-          : action === 'hide' ? ('Hidden \u201c' + title + '\u201d. Live site updates after publish (usually under a few minutes).')
-          : ('Shown \u201c' + title + '\u201d. Live site updates after publish (usually under a few minutes).');
+        setMsg(msg, action === 'delete' ? ('Request accepted for \u201c' + title + '\u201d. Live site updates after publish (usually a few minutes). If it does not change, tell me — do not assume it is live.')
+          : action === 'hide' ? ('Request accepted: hide \u201c' + title + '\u201d. Live site updates after publish. If it stays public, tell me.')
+          : ('Request accepted: show \u201c' + title + '\u201d. Live site updates after publish. If it stays hidden, tell me.'), false);
       }, function (e) {
         setPending(slug, null);
         onDone();
-        msg.textContent = 'Could not send (' + (e && e.message || 'network error') + '). Reverted — try again.';
+        setMsg(msg, 'NOT PUBLISHED — could not send (' + (e && e.message || 'network error') + '). Reverted. Try again.', true);
       });
     }
     var hidden = st.hidden;
@@ -277,22 +285,29 @@
         function act(action) {
           if (action === 'hide-collage' && !window.confirm('Hide this collage from Julius and Adam?\n\nAre you sure? You can Show it again later.')) return;
           if (action === 'delete-collage' && !window.confirm('Delete this collage permanently?\n\n\u201c' + label + '\u201d (' + file + ') will be removed from the site. This can\u2019t be undone from here.')) return;
-          // Optimistic: grey out / flip chip immediately, then send.
+          // Pending UI only until FormSubmit accepts. Delete does NOT remove the collage until then.
           setPending(key, action);
           if (onChange) onChange(action, { local: false, optimistic: true });
           draw();
-          if (msg) msg.textContent = (action === 'delete-collage' ? 'Deleted' : action === 'hide-collage' ? 'Hidden' : 'Shown')
-            + ' \u201c' + label + '\u201d here. Publishing\u2026';
+          setMsg(msg, (action === 'delete-collage' ? 'Deleting' : action === 'hide-collage' ? 'Hiding' : 'Showing')
+            + ' \u201c' + label + '\u201d\u2026 sending publish request', false);
           send(action, slug, label, { file: file }).then(function (r) {
-            if (r.local && msg) msg.textContent = 'Local preview: UI updated here. To publish run: ' + r.cmd;
-            else if (msg) msg.textContent = (action === 'delete-collage' ? 'Deleted' : action === 'hide-collage' ? 'Hidden' : 'Shown')
-              + ' \u201c' + label + '\u201d. Live site updates after publish.';
+            if (r.local) {
+              if (onChange && action === 'delete-collage') onChange(action, { confirmed: true, local: true });
+              setMsg(msg, 'Local preview: UI updated here. To publish run: ' + r.cmd, false);
+              draw();
+              return;
+            }
+            // FormSubmit accepted — now safe to drop deleted collage from this tab.
+            if (onChange && action === 'delete-collage') onChange(action, { confirmed: true });
+            setMsg(msg, (action === 'delete-collage' ? 'Delete request accepted for' : action === 'hide-collage' ? 'Hide request accepted for' : 'Show request accepted for')
+              + ' \u201c' + label + '\u201d. Live site updates after publish. If the live page does not change, tell me — do not assume it is live.', false);
             draw();
           }, function (e) {
             setPending(key, null);
             if (onChange) onChange('revert-' + action, { error: true });
             draw();
-            if (msg) msg.textContent = 'Could not send (' + (e && e.message || 'network error') + '). Reverted — try again.';
+            setMsg(msg, 'NOT PUBLISHED — could not send (' + (e && e.message || 'network error') + '). Reverted. Try again.', true);
           });
         }
         var hidden = st.hidden;

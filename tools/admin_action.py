@@ -12,7 +12,7 @@ Per-collage (project page; preferred):
   python3 tools/admin_action.py delete-collage <slug> <file>
 
 From a signed FormSubmit email:
-  python3 tools/admin_action.py --from-email email.txt [--remove-files] [--push]
+  python3 tools/admin_action.py --from-email email.txt [--remove-files] [--no-push]\n            (--from-email always git-pushes so Hide/Delete hit live; --no-push to skip)
 
 hide/unhide     set / clear "hidden": true in projects/projects.json
 hide-collage / show-collage
@@ -22,6 +22,7 @@ delete          remove the project from projects.json; --remove-files also delet
 --from-email    verify HMAC (tools/private/admin.json), refuse unsigned/stale/replayed,
                 then apply. Collage actions always remove the image file on delete-collage.
 --push          after a successful apply: git add -A, commit, push (publish).
+                Implied by --from-email (use --no-push to apply only).
 Exit code 2 = request rejected."""
 import argparse, datetime as dt, hashlib, hmac, json, os, re, shutil, subprocess, sys
 
@@ -90,6 +91,18 @@ def _safe_under(root, *parts):
         sys.exit('refusing path outside site root')
     return path
 
+
+def ensure_display_webps(slug):
+    """Auto-generate missing/outdated WebP display siblings for a project (PNG masters untouched)."""
+    try:
+        import optimize_display
+        res = optimize_display.optimize_project(slug)
+        n = len(res.get('files') or [])
+        if n:
+            print(f'  display WebP: {n} file(s) up to date for {slug}')
+    except Exception as e:
+        print('  display WebP skipped:', e)
+
 def apply_project(action, slug, remove_files):
     d = json.load(open(PJ))
     ps = d.get('projects', [])
@@ -135,18 +148,17 @@ def apply_collage(action, slug, file_):
     else:
         cfg['collages'] = [c for c in cols if c.get('file') != file_]
         print(f'{slug}/{file_}: removed from project.json' if entry else f'{slug}/{file_}: was not listed')
-        img = _safe_under(R, 'projects', slug, file_)
-        if os.path.isfile(img):
-            os.remove(img)
-            print('  deleted', os.path.relpath(img, R))
-        # mirror under /<slug>/ if present (legacy copies)
-        mirror = os.path.join(R, slug, file_)
-        if os.path.isfile(mirror) and os.path.realpath(mirror).startswith(os.path.realpath(R) + os.sep):
-            os.remove(mirror)
-            print('  deleted', os.path.relpath(mirror, R))
+        for name in (file_, os.path.splitext(file_)[0] + '.webp'):
+            for folder in (os.path.join(R, 'projects', slug), os.path.join(R, slug)):
+                path = os.path.join(folder, name)
+                if os.path.isfile(path) and os.path.realpath(path).startswith(os.path.realpath(R) + os.sep):
+                    os.remove(path)
+                    print('  deleted', os.path.relpath(path, R))
     with open(pj_path, 'w') as f:
         json.dump(cfg, f, indent=2)
         f.write('\n')
+    if action != 'delete-collage':
+        ensure_display_webps(slug)
 
 def push_publish(summary):
     """Commit applied changes and push so GitHub Pages updates (usually < few minutes)."""
@@ -168,6 +180,7 @@ def main():
     ap.add_argument('--from-email')
     ap.add_argument('--remove-files', action='store_true')
     ap.add_argument('--push', action='store_true', help='git commit + push after apply')
+    ap.add_argument('--no-push', action='store_true', help='with --from-email: apply only, do not push (default is to push)')
     a = ap.parse_args()
 
     summary = None
@@ -183,7 +196,8 @@ def main():
         fd = os.open(DONE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, 'w') as f:
             json.dump(done[-500:], f)
-        if a.push:
+        # Email-applied admin actions always publish unless --no-push (Hide/Delete must hit live).
+        if a.push or not a.no_push:
             push_publish(summary)
         return
 

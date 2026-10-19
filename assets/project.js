@@ -21,7 +21,7 @@
   var lineupOrder = []; // fixed-length pack slots: [{c,o}|null, ...] length = packSize
   var packSize = 8;    // from project.json packSize/slots (default 8)
   var collages = [];   // config
-  var imgs = [];       // loaded <img> elements
+  var imgs = [];       // PNG Image() used for crop math / lineup / payload (masters)
   var project = null;
   // ==== TEST MODE (for Hush only) =====================================
   // Open any project page with ?test=1 to turn it on for this browser tab
@@ -670,15 +670,26 @@
     head.appendChild(el('span', { class: 'status', 'aria-live': 'polite' }, 'Not picked yet · tap to pick (as many as you want)'));
     if (ADMIN && window.HushAdmin.collageControls) {
       var msgEl = document.getElementById('admin-msg');
-      var ctrls = window.HushAdmin.collageControls(slug, c, msgEl, function (action) {
+      var ctrls = window.HushAdmin.collageControls(slug, c, msgEl, function (action, meta) {
+        meta = meta || {};
         if (action === 'hide-collage') {
           c.hidden = true; sec.classList.add('adm-collage-hidden');
+          sec.classList.remove('adm-collage-pending-delete');
         } else if (action === 'show-collage' || action === 'revert-hide-collage') {
           c.hidden = false; sec.classList.remove('adm-collage-hidden');
+          sec.classList.remove('adm-collage-pending-delete');
         } else if (action === 'revert-show-collage') {
           c.hidden = true; sec.classList.add('adm-collage-hidden');
+        } else if (action === 'revert-delete-collage') {
+          // FormSubmit failed — collage stays; clear pending style.
+          sec.classList.remove('adm-collage-pending-delete');
         } else if (action === 'delete-collage') {
-          // Optimistic remove: drop this collage from the live admin view.
+          if (meta.optimistic && !meta.confirmed) {
+            // Waiting for FormSubmit: grey out only — do NOT remove yet.
+            sec.classList.add('adm-collage-pending-delete');
+            return;
+          }
+          // Confirmed sent (or local): drop from this tab.
           var idx = collages.indexOf(c);
           if (idx >= 0) {
             collages.splice(idx, 1);
@@ -693,7 +704,6 @@
             save();
           }
           sec.remove();
-          // Re-number remaining section ids/labels for this tab only.
           document.querySelectorAll('#collages .collage').forEach(function (s, j) {
             s.id = 'collage-' + (j + 1);
             var h = s.querySelector('h2'); if (h) h.id = 'h-c' + (j + 1);
@@ -707,10 +717,25 @@
     var scroller = el('div', { class: 'scroller' });
     var inner = el('div', { class: 'inner' });
     var frame = el('div', { class: 'frame', role: 'group', 'aria-label': label + ': tap characters to pick (tap again to unpick)' });
-    var img = el('img', { src: root + 'projects/' + slug + '/' + c.file, alt: label + ': ' + n + ' character options in a row, numbered 1 to ' + n, decoding: 'async' });
-    imgs[i] = img;
-    img.addEventListener('load', renderSummary);
-    frame.appendChild(img);
+    // Display: WebP when present (smaller), PNG fallback. Crops always use full-quality PNG master.
+    var pngSrc = root + 'projects/' + slug + '/' + c.file;
+    var webpSrc = pngSrc.replace(/\.png$/i, '.webp');
+    var picture = el('picture');
+    picture.appendChild(el('source', { type: 'image/webp', srcset: webpSrc }));
+    var display = el('img', {
+      src: pngSrc,
+      alt: label + ': ' + n + ' character options in a row, numbered 1 to ' + n,
+      decoding: 'async',
+      loading: i === 0 ? 'eager' : 'lazy'
+    });
+    picture.appendChild(display);
+    frame.appendChild(picture);
+    var cropImg = new Image();
+    cropImg.decoding = 'async';
+    cropImg.src = pngSrc;
+    imgs[i] = cropImg;
+    cropImg.addEventListener('load', renderSummary);
+    display.addEventListener('load', renderSummary);
     var nums = el('div', { class: 'nums', 'aria-hidden': 'true' });
     for (var k = 1; k <= n; k++) {
       var left = (b[k - 1] * 100) + '%', width = ((b[k] - b[k - 1]) * 100) + '%';

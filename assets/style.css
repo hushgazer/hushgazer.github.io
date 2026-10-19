@@ -262,3 +262,7 @@ body:has(.bar) .who-pill{bottom:198px}
 .who-signout:hover,.who-signout:focus-visible{background:var(--gold);color:#1a1408;border-color:var(--gold)}
 .who-acct.is-float{position:fixed;right:14px;top:14px;z-index:900;padding:6px 8px 6px 6px;background:rgba(20,21,28,.92);border:1px solid rgba(242,192,99,.35);border-radius:999px}
 @media (max-width:560px){.site-header .wrap{flex-wrap:wrap}.brand span{font-size:.8rem}.who-acct{gap:6px 8px}.who-acct-sw{font-size:.8rem}.who-signout{padding:6px 12px}}
+
+.adm-msg.adm-msg-error{color:#ffb4b4;font-weight:700}
+.collage.adm-collage-pending-delete{opacity:.45;border-style:dashed;outline:2px dashed #c44}
+.collage.adm-collage-pending-delete::before{content:"Deleting… waiting for publish";display:inline-block;font-size:.75rem;font-weight:700;color:#ffb4b4;border:1px solid #c44;border-radius:999px;padding:2px 10px;margin-bottom:8px}

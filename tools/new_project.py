@@ -53,3 +53,12 @@ if a.detect:
         json.dump(cfg, open(f'{R}/projects/{a.slug}/project.json', 'w'), indent=2)
         print('Header strip trimmed via cropTop:', tops)
     if low: print('WARNING: low confidence (check the overlays):', ', '.join(low))
+
+# Always generate WebP display siblings after a project is registered (PNG masters stay).
+try:
+    import optimize_display
+    optimize_display.optimize_project(a.slug)
+    print(f'Display WebPs ready for {a.slug} (client pages load .webp with PNG fallback)')
+except Exception as e:
+    print('display WebP skipped:', e)
+
