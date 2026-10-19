@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="strict-origin">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://api.web3forms.com; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://formsubmit.co; object-src 'none'; base-uri 'self'; form-action 'self'">
 <title>Pick your characters · Hush Media Creations</title>
 <meta name="description" content="Tap your favourite character in each collage and submit your picks to Hush Media Creations.">
 <meta name="robots" content="noindex">
@@ -27,12 +27,12 @@
         <label>Your name (optional)
           <input type="text" name="name" autocomplete="name" maxlength="100">
         </label>
-        <div class="hp" aria-hidden="true"><label>Leave this box unticked <input type="checkbox" name="botcheck" tabindex="-1"></label></div>
+        <div class="hp" aria-hidden="true"><label>Leave this field empty <input type="text" name="_honey" tabindex="-1" autocomplete="off"></label></div>
         <p id="send-error" class="error" role="alert" hidden></p>
         <p id="need" class="privacy" aria-live="polite"></p>
         <div><button class="btn" type="submit" id="submit" disabled>Submit picks</button>
         <button class="btn btn-secondary" type="button" id="reset">Clear</button></div>
-        <p class="privacy">Privacy: when you press Submit, your character picks and the name you choose to type are emailed to Hush Media Creations using the form service Web3Forms (web3forms.com). Nothing else is collected: no accounts, cookies, trackers or analytics. Your in-progress picks are remembered only in this browser until you submit.</p>
+        <p class="privacy">Privacy: when you press Submit, your character picks and the name you choose to type are emailed to Hush Media Creations using the form service FormSubmit (formsubmit.co). Nothing else is collected: no accounts, cookies, trackers or analytics. Your in-progress picks are remembered only in this browser until you submit.</p>
       </form>
       <div class="confirm" id="confirm" hidden></div>
     </section>

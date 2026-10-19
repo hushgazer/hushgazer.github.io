@@ -1,13 +1,14 @@
 /* Hush Media Creations — client picks page.
-   Network: loads local project files; on Submit, POSTs the picks to Web3Forms (emailed to Hush Media Creations). */
+   Network: loads local project files; on Submit, POSTs the picks to FormSubmit (emailed to Hush Media Creations). */
 (function () {
   'use strict';
-  // ==== WEB3FORMS SETTINGS =============================================
-  // Paste the Web3Forms access key (UUID from the Web3Forms email) below.
-  // The key is public by design (it only lets people send mail TO us).
-  // While empty, Submit shows the thanks panel locally and sends NOTHING.
-  var FORM_ENDPOINT = 'https://api.web3forms.com/submit';
-  var WEB3FORMS_ACCESS_KEY = '';
+  // ==== FORMSUBMIT SETTINGS ============================================
+  // Picks are emailed to Hush Media Creations by FormSubmit (formsubmit.co).
+  // FORM_TARGET starts as the inbox address; after the form is activated,
+  // replace it with FormSubmit's random alias so the address isn't in the code.
+  // Set FORM_TARGET to '' to disable sending (Submit then only shows thanks locally).
+  var FORM_TARGET = 'aae697c61d8971216e3ef477e0b2a4cf'; // FormSubmit alias for the Hush picks inbox
+  var FORM_ENDPOINT = 'https://formsubmit.co/ajax/' + FORM_TARGET;
   // =====================================================================
 
   var app = document.getElementById('app');
@@ -194,18 +195,18 @@
     var data = payload();
     document.getElementById('send-error').hidden = true;
     // Honeypot: real people never see or tick this box; bots that fill every field do.
-    var bot = !!(f.elements.botcheck && f.elements.botcheck.checked);
-    if (!WEB3FORMS_ACCESS_KEY || bot) { showThanks(data); return; } // nothing is sent
+    var bot = !!(f.elements._honey && f.elements._honey.value);
+    if (!FORM_TARGET || bot) { showThanks(data); return; } // nothing is sent
     var btn = document.getElementById('submit');
     sending = true; btn.disabled = true; btn.textContent = 'Sending\u2026';
     fetch(FORM_ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify({
-        access_key: WEB3FORMS_ACCESS_KEY,
-        subject: 'Hush picks: ' + data.projectTitle + ' (' + data.project + ')',
-        from_name: 'Hush Media Picks',
-        botcheck: false,
+        _subject: 'Hush picks: ' + data.projectTitle + ' (' + data.project + ')',
+        _template: 'box',
+        _captcha: 'false',
+        _honey: '',
         project: data.project,
         client_name: data.clientName || '(not given)',
         summary: data.summary,
@@ -214,7 +215,7 @@
     })
       .then(function (r) {
         return r.json().catch(function () { return {}; }).then(function (j) {
-          if (!r.ok || !j.success) throw new Error(j.message || ('HTTP ' + r.status));
+          if (!r.ok || !(j.success === true || j.success === 'true')) throw new Error(j.message || ('HTTP ' + r.status));
         });
       })
       .then(function () { sending = false; showThanks(data); })
