@@ -103,24 +103,34 @@ no passwords, no trackers, no external scripts. Picks are emailed through FormSu
   only `SHA-256("Hush|<password>")` is written into `assets/admin-login.js`.
 * After sign-in the tab keeps `sessionStorage` `hush-admin=1` (+ a signing key) and goes to the
   home page with a purple **ADMIN** bar. Home lists every project, including hidden ones, each
-  with **Hide/Unhide** and **Delete**; project pages show the same controls. **Sign out**
-  clears the session (closing the tab does too).
-* **Hidden** (`"hidden": true` in `projects/projects.json`): left off the public home page;
-  the project URL shows a polite "This project isn't available right now" page to anyone not
-  signed in. A project missing from `projects.json` also shows that page.
-* Each button click (Delete asks for confirmation first) emails a signed request through
-  FormSubmit (same `FORM_TARGET` as the picks, copied via `_cc` to the bot inbox) with subject
-  `Hush admin: <hide|unhide|delete> <slug>` and a payload between
-  `HUSHADMIN_JSON_BEGIN` / `HUSHADMIN_JSON_END`:
-  `{"schema":"hush-admin/v1","action","slug","title","by","at","nonce","sig"}` where
-  `sig = HMAC-SHA256(signKey, "hush-admin/v1|action|slug|at|nonce")`.
-  The admin tab shows "… requested · updates at next publish" until the live site matches.
+  with **Hide/Unhide** and **Delete** (project-level). **Sign out** clears the session
+  (closing the tab does too). **Test mode** stays in the admin bar.
+* **Project pages** do **not** hide/delete the whole project from the admin bar. Instead each
+  collage section shows **Hide collage** / **Show collage** / **Delete collage**. Hide and
+  Delete always ask for confirmation first (Delete: "Delete this collage permanently?").
+  Hidden collages vanish for Julius/Adam after publish; admin still sees them greyed with
+  **Show collage**. The UI updates immediately (optimistic); the live site updates after the
+  automation applies + pushes (usually a few minutes).
+* **Hidden project** (`"hidden": true` in `projects/projects.json`): left off the public home
+  page; the project URL shows "This project isn't available right now" to anyone not signed
+  in. **Hidden collage** (`"hidden": true` on a collage entry in `projects/<slug>/project.json`):
+  omitted for clients; admin still sees it greyed.
+* Each button click emails a signed request through FormSubmit (same `FORM_TARGET` as the
+  picks, copied via `_cc` to the bot inbox). Subjects:
+  - project: `Hush admin: <hide|unhide|delete> <slug>`
+  - collage: `Hush admin: <hide-collage|show-collage|delete-collage> <slug> <file>`
+  Payload between `HUSHADMIN_JSON_BEGIN` / `HUSHADMIN_JSON_END`:
+  `{"schema":"hush-admin/v1","action","slug","file?","title","by","at","nonce","sig"}` where
+  project `sig = HMAC-SHA256(signKey, "hush-admin/v1|action|slug|at|nonce")` and collage
+  `sig = HMAC-SHA256(signKey, "hush-admin/v1|action|slug|file|at|nonce")`.
 * **Picks routine**: for a "Hush admin:" email, save the email text and run
-  `python3 tools/admin_action.py --from-email mail.txt --remove-files` (delete) or without
-  `--remove-files` (hide/unhide). It rejects bad signatures, replays and requests older than
-  7 days (exit code 2: do nothing, tell Hush). Then commit + push and tell Hush.
+  `python3 tools/admin_action.py --from-email mail.txt --push` (add `--remove-files` for
+  project delete). It rejects bad signatures, replays and requests older than 7 days
+  (exit code 2). `--push` commits and pushes so GitHub Pages updates.
 * By hand / local preview (the local admin bar never emails; it shows the command):
-  `python3 tools/admin_action.py hide|unhide <slug>`, `python3 tools/admin_action.py delete <slug> [--remove-files]`.
+  `python3 tools/admin_action.py hide|unhide <slug>`,
+  `python3 tools/admin_action.py delete <slug> [--remove-files]`,
+  `python3 tools/admin_action.py hide-collage|show-collage|delete-collage <slug> <file> [--push]`.
 * Caveat: this sign-in is a convenience gate (the hash is public and a short password can be
   guessed). Nothing changes on the site unless `admin_action.py` verifies the signature, so a
   stronger password makes forged requests harder. Hidden projects' slugs are still listed in

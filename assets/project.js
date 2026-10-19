@@ -328,10 +328,38 @@
 
   function renderCollage(c, i) {
     var n = c.options, b = bounds(c), label = c.label || ('Collage ' + (i + 1));
-    var sec = el('section', { class: 'collage', id: 'collage-' + (i + 1), 'aria-labelledby': 'h-c' + (i + 1) });
+    var sec = el('section', { class: 'collage', id: 'collage-' + (i + 1), 'aria-labelledby': 'h-c' + (i + 1), 'data-file': c.file });
+    if (c.hidden) sec.classList.add('adm-collage-hidden');
     var head = el('div', { class: 'collage-head' });
     head.appendChild(el('h2', { id: 'h-c' + (i + 1) }, label + ' · ' + n + ' options'));
     head.appendChild(el('span', { class: 'status', 'aria-live': 'polite' }, 'Not picked yet · tap to pick (as many as you want)'));
+    if (ADMIN && window.HushAdmin.collageControls) {
+      var msgEl = document.getElementById('admin-msg');
+      var ctrls = window.HushAdmin.collageControls(slug, c, msgEl, function (action) {
+        if (action === 'hide-collage') {
+          c.hidden = true; sec.classList.add('adm-collage-hidden');
+        } else if (action === 'show-collage') {
+          c.hidden = false; sec.classList.remove('adm-collage-hidden');
+        } else if (action === 'delete-collage') {
+          // Optimistic remove: drop this collage from the live admin view.
+          var idx = collages.indexOf(c);
+          if (idx >= 0) {
+            collages.splice(idx, 1);
+            picks.splice(idx, 1);
+            imgs.splice(idx, 1);
+            notes.splice(idx, 1);
+          }
+          sec.remove();
+          // Re-number remaining section ids/labels for this tab only.
+          document.querySelectorAll('#collages .collage').forEach(function (s, j) {
+            s.id = 'collage-' + (j + 1);
+            var h = s.querySelector('h2'); if (h) h.id = 'h-c' + (j + 1);
+          });
+          renderSummary();
+        }
+      });
+      head.appendChild(ctrls);
+    }
     sec.appendChild(head);
     var scroller = el('div', { class: 'scroller' });
     var inner = el('div', { class: 'inner' });
@@ -603,7 +631,10 @@
     .then(function (p) { return resolveClient(p).then(function (m) { mode = m; return p; }); })
     .then(function (p) {
       if (ADMIN) window.HushAdmin.projectBar(slug, p.title || slug, listed ? listed.entry : { slug: slug });
-      project = p; collages = p.collages || [];
+      project = p;
+      // Clients never see collages marked hidden in project.json; admin still does (greyed).
+      var raw = p.collages || [];
+      collages = ADMIN ? raw.slice() : raw.filter(function (c) { return c && !c.hidden; });
       picks = collages.map(function () { return []; });
       if (mode !== 'locked') load();
       document.title = p.title + ' — Pick your characters · Hush Media Creations';

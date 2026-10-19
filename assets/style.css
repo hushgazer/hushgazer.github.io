@@ -212,3 +212,14 @@ background:rgba(255,255,255,.035);border:1px solid var(--line);border-radius:14p
 .admin-bar + .test-banner{top:44px}
 /* keep the "Not you? Switch" pill clear of the bottom picks bar (Review & submit) */
 body:has(.bar) .who-pill{bottom:92px}
+
+/* per-collage admin controls (Hush only, on project pages) */
+.collage-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px}
+.collage-head h2{flex:1 1 auto;margin:0}
+.collage-head .status{flex:1 1 100%}
+.adm-collage-actions{display:inline-flex;flex-wrap:wrap;align-items:center;gap:6px;margin-left:auto}
+.adm-collage-actions .adm-btn{font-size:.78rem;padding:4px 12px}
+.adm-hint{color:#c9b6ff;font-size:.82rem;opacity:.9}
+.collage.adm-collage-hidden{opacity:.55;border-style:dashed}
+.collage.adm-collage-hidden .frame{filter:grayscale(.35)}
+.collage.adm-collage-hidden::before{content:"Hidden from clients";display:inline-block;font-size:.75rem;font-weight:700;color:var(--gold);border:1px solid var(--gold2);border-radius:999px;padding:2px 10px;margin-bottom:8px}

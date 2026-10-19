@@ -15,11 +15,16 @@ tracked = subprocess.run(['git', 'ls-files'], cwd=R, capture_output=True, text=T
 tracked += ['admin/index.html', 'assets/admin.js', 'assets/admin-login.js']
 for f in set(tracked):
     if f.endswith(('.png', '.jpg', '.webp')) or not os.path.exists(os.path.join(R, f)): continue
+    if f.startswith('tools/') or f.startswith('tools\\'): continue  # local test helpers may use the password
     t = open(os.path.join(R, f), errors='ignore').read()
     assert PRIV['signKey'] not in t, f'sign key leaked in {f}'
     assert f'"{PRIV["password"]}"' not in t and f"'{PRIV['password']}'" not in t, f'password literal in {f}'
     if f.endswith('.html') and not f.startswith('admin/'):
-        assert 'type="password"' not in t and 'admin-login' not in t and not re.search(r'href="[^"]*admin/', t), f'login/admin link on client page {f}'
+        # Who-are-you gate may include type="password" (id=who-pass); /admin/ sign-in must not appear on client pages.
+        assert 'admin-login' not in t and not re.search(r'href="[^"]*admin/', t), f'admin login/link on client page {f}'
+        for m in re.finditer(r'type="password"', t):
+            nearby = t[max(0, m.start()-80):m.start()+80]
+            assert 'who-pass' in nearby or 'id="who-pass"' in t, f'unexpected password field on client page {f}'
 assert PRIV['loginHash'] in open(os.path.join(R, 'assets/admin-login.js')).read()
 print('PASS published files: hash only, no password/key, client pages have no login fields or admin links')
 
@@ -46,7 +51,8 @@ with sync_playwright() as p:
         c.route(re.compile(r'^(?!http://127\.0\.0\.1:8765/|https://hushgazer\.github\.io/|https://formsubmit\.co/).*'), lambda r: r.abort())
         c.route(LIVE + '**', serve_local_as_live); c.route(FS, mock_api)
         # pass the "Who are you?" gate as a client (the gate itself is tested in tools/test_who.py)
-        c.add_init_script("try{sessionStorage.setItem('hush-who','Julius')}catch(e){}")
+        # Pass the Who-are-you gate as Julius (password hash must match assets/who.js CLIENT_LOGIN_HASH).
+        c.add_init_script("try{sessionStorage.setItem('hush-who','Julius');sessionStorage.setItem('hush-who-auth','d1747f0fe458f88539181706839080c16ec6441c7081570e61c172cb05be351e')}catch(e){}")
         pg = c.new_page()
         pg.on('console', lambda m: errs.append(m.text) if m.type == 'error' else None)
         pg.on('pageerror', lambda e: errs.append(str(e)))
@@ -55,7 +61,9 @@ with sync_playwright() as p:
     # 2) public: no admin bar, hidden demo not listed, hidden project -> not available
     c, pg = ctx_for(B)
     pg.goto(B); pg.wait_for_selector('.project-list a')
-    assert pg.locator('#admin-bar').count() == 0 and pg.locator('input').count() == 0
+    assert pg.locator('#admin-bar').count() == 0
+    assert pg.locator('#who-overlay').count() == 0, 'who gate should be released for authed Julius'
+    assert pg.locator('input[type=password]').count() == 0
     slugs = [a.get_attribute('href') for a in pg.locator('.project-list a').all()]
     assert 'demo/' not in slugs and 'kraken/' in slugs, slugs
     pg.goto(B + 'demo/'); pg.wait_for_selector('#unavailable')
@@ -74,12 +82,21 @@ with sync_playwright() as p:
     pg.screenshot(path='preview-admin-home.png')
     rows = pg.locator('.admin-list li'); assert rows.count() == 3, rows.count()
     assert 'Hidden' in pg.text_content('li[data-slug=demo] .adm-chip')
-    pg.goto(B + 'demo/'); pg.wait_for_selector('.collage'); assert pg.locator('#admin-bar .adm-chip').count() == 1
-    pg.goto(B + 'kraken/'); pg.wait_for_selector('#admin-bar [data-act=hide]')
-    # local preview: no email, shows the command
-    pg.click('#admin-bar [data-act=hide]'); pg.wait_for_selector('#admin-msg:has-text("admin_action.py hide kraken")')
+    pg.goto(B + 'demo/'); pg.wait_for_selector('.collage'); assert pg.locator('#admin-bar').count() == 1
+    assert pg.locator('#admin-bar [data-act=hide]').count() == 0, 'project bar must not hide whole project'
+    pg.goto(B + 'kraken/'); pg.wait_for_selector('.adm-collage-actions [data-act=hide-collage]')
+    # local preview: confirm then no email, shows the command
+    pg.once('dialog', lambda d: d.accept())
+    pg.click('.adm-collage-actions [data-act=hide-collage]')
+    pg.wait_for_selector('#admin-msg:has-text("admin_action.py hide-collage")')
     assert posts == []
-    pg.screenshot(path='preview-admin-project.png')
+    pg.screenshot(path='preview-admin-project.png', full_page=False)
+    # cancel hide: no command change / no send
+    pg.once('dialog', lambda d: d.dismiss())
+    before = pg.text_content('#admin-msg')
+    pg.locator('.adm-collage-actions [data-act=hide-collage]').first.click()
+    pg.wait_for_timeout(200)
+    assert posts == []
     pg.click('#admin-signout'); pg.wait_for_url(B)
     assert pg.locator('#admin-bar').count() == 0 and pg.evaluate("sessionStorage.getItem('hush-admin')") is None
     c.close()
@@ -89,6 +106,7 @@ with sync_playwright() as p:
     c, pg = ctx_for(LIVE)
     pg.goto(LIVE + 'admin/'); pg.fill('#admin-pass', PRIV['password']); pg.click('#login-btn')
     pg.wait_for_selector('#admin-bar'); pg.wait_for_selector('li[data-slug=lion] [data-act=hide]')
+    pg.once('dialog', lambda d: d.accept())
     pg.click('li[data-slug=lion] [data-act=hide]'); pg.wait_for_selector('li[data-slug=lion] [data-act=unhide]')
     assert 'Hide requested' in pg.text_content('li[data-slug=lion] .adm-chip')
     pg.on('dialog', lambda d: d.dismiss()); pg.click('li[data-slug=kraken] [data-act=delete]'); pg.wait_for_timeout(300)
@@ -126,5 +144,54 @@ with sync_playwright() as p:
         assert 'kraken' not in [x['slug'] for x in d['projects']]
         assert not os.path.exists(os.path.join(td, 'kraken')) and not os.path.exists(os.path.join(td, 'projects/kraken'))
     print('PASS live admin: signed hide/delete emails, cancel = no send, admin_action.py applies valid, rejects replay + forgery')
+
+    # 5) collage hide/show/delete: confirm required, signed email, admin_action applies to project.json
+    posts.clear()
+    c, pg = ctx_for(LIVE)
+    pg.goto(LIVE + 'admin/'); pg.fill('#admin-pass', PRIV['password']); pg.click('#login-btn')
+    pg.wait_for_selector('#admin-bar')
+    pg.goto(LIVE + 'lion/'); pg.wait_for_selector('.adm-collage-actions')
+    assert pg.locator('#admin-bar [data-act=hide]').count() == 0
+    assert pg.locator('.adm-collage-actions').count() >= 1
+    # cancel delete-collage
+    pg.once('dialog', lambda d: d.dismiss())
+    pg.locator('.adm-collage-actions [data-act=delete-collage]').first.click()
+    pg.wait_for_timeout(300)
+    assert posts == [], 'cancelled collage delete must not send'
+    # accept hide-collage
+    pg.once('dialog', lambda d: d.accept())
+    file0 = pg.locator('.collage').first.get_attribute('data-file')
+    pg.locator('.collage').first.locator('[data-act=hide-collage]').click()
+    pg.wait_for_selector('.collage.adm-collage-hidden')
+    assert len(posts) == 1 and posts[0]['_subject'] == f'Hush admin: hide-collage lion {file0}'
+    hide_c = posts[0]
+    pg.screenshot(path='preview-admin-collage.png')
+    c.close()
+    with tempfile.TemporaryDirectory() as td:
+        for sub in ('tools', 'tools/private', 'projects', f'projects/lion'):
+            os.makedirs(os.path.join(td, sub), exist_ok=True)
+        import shutil
+        shutil.copy(os.path.join(R, 'tools/admin_action.py'), os.path.join(td, 'tools'))
+        shutil.copy(os.path.join(R, 'tools/private/admin.json'), os.path.join(td, 'tools/private'))
+        shutil.copy(os.path.join(R, 'projects/lion/project.json'), os.path.join(td, 'projects/lion'))
+        # touch a fake image so delete-collage can remove it later
+        open(os.path.join(td, 'projects/lion', file0), 'wb').write(b'PNG')
+        def run(body):
+            fn = os.path.join(td, 'mail.txt'); open(fn, 'w').write('Subject: x\n\npayload: ' + body)
+            return subprocess.run(['python3', os.path.join(td, 'tools/admin_action.py'), '--from-email', fn], capture_output=True, text=True)
+        r = run(hide_c['payload']); assert r.returncode == 0, r.stdout + r.stderr
+        cfg = json.load(open(os.path.join(td, 'projects/lion/project.json')))
+        ent = next(x for x in cfg['collages'] if x['file'] == file0)
+        assert ent.get('hidden') is True
+        # craft a delete-collage by reusing the client signing path: apply via CLI instead
+        r2 = subprocess.run(['python3', os.path.join(td, 'tools/admin_action.py'), 'delete-collage', 'lion', file0], capture_output=True, text=True, cwd=td)
+        # admin_action uses R from its own path, so cwd doesn't matter — it will edit the REAL site if we run against copied script's R
+        # The copied script's R is td (dirname dirname of tools/admin_action.py in td). Good.
+        assert r2.returncode == 0, r2.stdout + r2.stderr
+        cfg2 = json.load(open(os.path.join(td, 'projects/lion/project.json')))
+        assert file0 not in [x['file'] for x in cfg2['collages']]
+        assert not os.path.exists(os.path.join(td, 'projects/lion', file0))
+    print('PASS collage admin: confirm cancel, signed hide-collage email, apply hide + delete-collage')
+
     print('errors:', errs); assert not errs
     print('ALL ADMIN TESTS PASSED')

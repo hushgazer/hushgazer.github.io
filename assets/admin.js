@@ -1,9 +1,11 @@
-/* Hush Media Creations: admin bar (Hide / Unhide / Delete) for Hush only.
+/* Hush Media Creations: admin bar + per-collage Hide / Show / Delete for Hush only.
    Does nothing at all unless this browser tab signed in on /admin/ (sessionStorage).
    Client pages never show a login: the sign-in form lives only on the unlinked /admin/ page.
    A static site can't edit itself, so each action is emailed (FormSubmit, same inbox as the
    picks) with an HMAC signature; the picks routine verifies it with tools/admin_action.py,
-   updates projects/projects.json and republishes. Until then this tab shows it as pending. */
+   updates project.json / projects.json, commits, pushes. Until then this tab shows pending.
+   Project pages: hide/delete individual collages (not the whole project). Home still has
+   project-level Hide/Delete. Hide and Delete always ask for confirmation first. */
 (function () {
   'use strict';
   // ==== must match FORM_TARGET / FORM_CC in assets/project.js ====
@@ -65,14 +67,26 @@
     try { ['hush-admin', 'hush-admin-key', 'hush-admin-name', 'hush-test', 'hush-test-as'].forEach(function (k) { sessionStorage.removeItem(k); }); } catch (e) {}
     location.replace(ROOT);
   }
-  function send(action, slug, title) {
+  // opts.file = collage filename for hide-collage / show-collage / delete-collage
+  function send(action, slug, title, opts) {
+    opts = opts || {};
+    var file = opts.file || '';
     var at = new Date().toISOString(), nonce = hex(crypto.getRandomValues(new Uint8Array(8)).buffer);
-    if (LOCAL) return Promise.resolve({ local: true, cmd: 'python3 tools/admin_action.py ' + action + ' ' + slug + (action === 'delete' ? ' --remove-files' : '') });
-    return sign(['hush-admin/v1', action, slug, at, nonce].join('|')).then(function (sig) {
+    var isCollage = action.indexOf('-collage') > 0;
+    if (LOCAL) {
+      var cmd = 'python3 tools/admin_action.py ' + action + ' ' + slug + (isCollage ? (' ' + file) : '') + (action === 'delete' ? ' --remove-files' : '') + ' --push';
+      return Promise.resolve({ local: true, cmd: cmd });
+    }
+    var parts = ['hush-admin/v1', action, slug];
+    if (isCollage) parts.push(file);
+    parts.push(at, nonce);
+    return sign(parts.join('|')).then(function (sig) {
       var pl = { schema: 'hush-admin/v1', action: action, slug: slug, title: title || slug, by: who, at: at, nonce: nonce, sig: sig };
+      if (isCollage) pl.file = file;
+      var subj = 'Hush admin: ' + action + ' ' + slug + (isCollage ? (' ' + file) : '');
       var body = {
-        _subject: 'Hush admin: ' + action + ' ' + slug, _template: 'box', _captcha: 'false', _honey: '',
-        action: action, project: slug, requested_at: at,
+        _subject: subj, _template: 'box', _captcha: 'false', _honey: '',
+        action: action, project: slug, collage: file || undefined, requested_at: at,
         payload: 'HUSHADMIN_JSON_BEGIN ' + JSON.stringify(pl) + ' HUSHADMIN_JSON_END'
       };
       if (FORM_CC) body._cc = FORM_CC;
@@ -95,7 +109,8 @@
     box.appendChild(chip(st));
     if (st.pend === 'delete' || st.pub === 'gone') return box;
     function act(action) {
-      if (action === 'delete' && !window.confirm('Delete \u201c' + title + '\u201d?\n\nClients lose access right away and the project is removed from the site at the next publish. This can\u2019t be undone from here.')) return;
+      if (action === 'hide' && !window.confirm('Hide \u201c' + title + '\u201d?\n\nClients will see it as not available until you Unhide. Are you sure?')) return;
+      if (action === 'delete' && !window.confirm('Delete \u201c' + title + '\u201d permanently?\n\nClients lose access right away and the project is removed from the site at the next publish. This can\u2019t be undone from here.')) return;
       box.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
       msg.textContent = 'Sending\u2026';
       send(action, slug, title).then(function (r) {
@@ -205,17 +220,69 @@
       draw();
       if (testOn()) testBanner(null);
     },
+    // Project page: no whole-project Hide/Delete here — use per-collage controls below.
     projectBar: function (slug, title, entry) {
-      var msg = el('span', { class: 'adm-msg', id: 'admin-msg', 'aria-live': 'polite' });
       var holder = el('span', { class: 'adm-proj' });
-      function draw() {
-        holder.textContent = '';
-        holder.appendChild(el('a', { href: ROOT, class: 'adm-link' }, 'All projects'));
-        holder.appendChild(el('span', { class: 'adm-slug' }, title));
-        holder.appendChild(controls(slug, title, entry, msg, draw));
-        holder.appendChild(msg);
+      holder.appendChild(el('a', { href: ROOT, class: 'adm-link' }, 'All projects'));
+      holder.appendChild(el('span', { class: 'adm-slug' }, title));
+      holder.appendChild(el('span', { class: 'adm-hint' }, 'Hide or delete individual collages below'));
+      var msg = el('span', { class: 'adm-msg', id: 'admin-msg', 'aria-live': 'polite' });
+      holder.appendChild(msg);
+      bar(holder);
+      return msg;
+    },
+    // Per-collage controls for a project page section. collage = {file, label?, hidden?}
+    // onChange(action) after optimistic UI should update (hide|show-collage|delete-collage).
+    collageControls: function (slug, collage, msg, onChange) {
+      var file = collage.file, label = collage.label || file;
+      var key = slug + '/' + file;
+      function cState() {
+        var pub = collage.hidden ? 'hidden' : 'public', act = pending()[key];
+        if ((act === 'hide-collage' && pub === 'hidden') || (act === 'show-collage' && pub === 'public') || (act === 'delete-collage' && !document.getElementById('collage-file-' + file))) {
+          setPending(key, null); act = null;
+        }
+        return { pub: pub, pend: act || null, hidden: act === 'hide-collage' || act === 'delete-collage' || (!act && pub === 'hidden') };
       }
-      draw(); bar(holder);
-    }
+      var box = el('span', { class: 'adm-collage-actions', 'data-file': file });
+      function draw() {
+        var st = cState();
+        box.textContent = '';
+        var chipT = st.pend
+          ? ({ 'hide-collage': 'Hide requested', 'show-collage': 'Show requested', 'delete-collage': 'Delete requested' }[st.pend] + ' \u00b7 live in a few minutes')
+          : (st.hidden ? 'Hidden from clients' : 'Visible');
+        box.appendChild(el('span', { class: 'adm-chip adm-' + (st.pend ? 'pending' : (st.hidden ? 'hidden' : 'public')) }, chipT));
+        if (st.pend === 'delete-collage') return;
+        function act(action) {
+          if (action === 'hide-collage' && !window.confirm('Hide this collage from Julius and Adam?\n\nAre you sure? You can Show it again later.')) return;
+          if (action === 'delete-collage' && !window.confirm('Delete this collage permanently?\n\n\u201c' + label + '\u201d (' + file + ') will be removed from the site. This can\u2019t be undone from here.')) return;
+          box.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
+          if (msg) msg.textContent = 'Sending\u2026';
+          send(action, slug, label, { file: file }).then(function (r) {
+            if (!r.local) setPending(key, action);
+            else if (msg) msg.textContent = 'Local preview: nothing emailed. To apply + publish run: ' + r.cmd;
+            else { /* keep */ }
+            if (!r.local && msg) {
+              msg.textContent = (action === 'delete-collage' ? 'Delete' : action === 'hide-collage' ? 'Hide' : 'Show')
+                + ' requested for ' + label + '. Goes live after the automation runs (usually a few minutes).';
+            }
+            if (onChange) onChange(action, r);
+            draw();
+          }, function (e) {
+            if (msg) msg.textContent = 'Could not send (' + (e && e.message || 'network error') + '). Nothing changed, try again.';
+            box.querySelectorAll('button').forEach(function (b) { b.disabled = false; });
+          });
+        }
+        var hidden = st.hidden;
+        var hb = el('button', { type: 'button', class: 'adm-btn adm-c-hide', 'data-act': hidden ? 'show-collage' : 'hide-collage' },
+          hidden ? 'Show collage' : 'Hide collage');
+        hb.addEventListener('click', function () { act(hidden ? 'show-collage' : 'hide-collage'); });
+        var db = el('button', { type: 'button', class: 'adm-btn adm-danger adm-c-del', 'data-act': 'delete-collage' }, 'Delete collage');
+        db.addEventListener('click', function () { act('delete-collage'); });
+        box.appendChild(hb); box.appendChild(db);
+      }
+      draw();
+      return box;
+    },
+    collagePending: function (slug, file) { return pending()[slug + '/' + file] || null; }
   };
 })();
