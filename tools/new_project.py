@@ -8,6 +8,8 @@ Usage: python3 tools/new_project.py <slug> "Project Title" [--desc "text"] [--de
   --image-bot AGENT_ID  save the agent id of the image bot that made the project as the
             optional "imageBot" field in project.json (make_picks_sheet.py prints it so
             client picks can be routed back to that bot)
+Client UX (pick-cheer toasts, submit celebration, auto-reload) comes from shared
+assets (project.js / who.js / style.css) — no per-project JS.
 Expects projects/<slug>/project.json to exist (images in the same folder)."""
 import json, sys, os, argparse
 R = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -28,6 +30,17 @@ entry = {'slug': a.slug, 'title': a.title, 'description': a.desc}
 if prev.get('hidden'): entry['hidden'] = True   # keep a hidden project hidden
 d['projects'] = [p for p in d['projects'] if p['slug'] != a.slug] + [entry]
 json.dump(d, open(pj, 'w'), indent=2); print(f'Created {a.slug}/index.html and updated projects.json')
+
+# Align cache-bust (?v=N / data-build) with assets/build.json so the new page
+# (and template) stay in sync with live shared assets — no new version invented.
+try:
+    import subprocess
+    _v = json.load(open(f'{R}/assets/build.json')).get('v')
+    if _v is not None:
+        subprocess.check_call([sys.executable, f'{R}/tools/inject_gate.py', str(_v)], cwd=R)
+        print(f'Synced cache-bust v={_v} via inject_gate')
+except Exception as e:
+    print('inject_gate skipped:', e)
 if a.detect:
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import detect_columns

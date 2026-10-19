@@ -22,6 +22,9 @@ no passwords, no trackers, no external scripts. Picks are emailed through FormSu
      `tools/out/<slug>-<collage>-columns.png` before publishing.
    * also sets `"cropTop"` when a header text strip is found (trimmed in crops/lineup)
    * `--image-bot` saves `"imageBot"` so picks go back to the bot that made the project
+   * Client UX (pick-cheer toasts, submit celebration, stale-page auto-reload) lives in
+     shared `assets/` — the template just links them; `new_project.py` re-runs
+     `inject_gate.py` with the current `assets/build.json` version so cache-bust stays aligned.
 4. Give each client a personal link (no passwords):
    `python3 tools/add_client.py <slug> Julius --role decider`
    `python3 tools/add_client.py <slug> Adam --role advisor`
