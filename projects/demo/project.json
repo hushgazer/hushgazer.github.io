@@ -1,0 +1,21 @@
+{
+  "title": "Demo Project (Sample)",
+  "description": "Sample collages to preview how picking works.",
+  "collages": [
+    {
+      "file": "collage-1.png",
+      "options": 8,
+      "label": "Collage 1"
+    },
+    {
+      "file": "collage-2.png",
+      "options": 7,
+      "label": "Collage 2"
+    },
+    {
+      "file": "collage-3.png",
+      "options": 8,
+      "label": "Collage 3"
+    }
+  ]
+}

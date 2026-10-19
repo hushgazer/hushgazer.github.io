@@ -1,0 +1,9 @@
+{
+  "projects": [
+    {
+      "slug": "demo",
+      "title": "Demo Project (Sample)",
+      "description": "Sample collages to preview how picking works."
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+# Generated previews / tool outputs (not part of the site)
+preview*.png
+picks-sheet*.png
+tools/out/
+*.out.png
+# Python / OS / editor junk
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+node_modules/
