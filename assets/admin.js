@@ -1,21 +1,16 @@
 /* Hush Media Creations: admin bar + per-collage Hide / Show / Delete for Hush only.
    Does nothing at all unless this browser tab signed in on /admin/ (sessionStorage).
    Client pages never show a login: the sign-in form lives only on the unlinked /admin/ page.
-   A static site can't edit itself, so each action is emailed (FormSubmit, same inbox as the
-   picks) with an HMAC signature; the picks routine verifies it with tools/admin_action.py,
-   updates project.json / projects.json, commits, pushes.
-   OPTIMISTIC UI: this tab flips to Hidden / Shown / Removed the moment you confirm — before
-   the email round-trip — so Hide never feels stuck waiting on publish. The live public site
-   updates after admin_action.py --push + Pages.
+   Admin actions POST a signed hush-admin/v1 payload to the Cloudflare Worker
+   (HUSH_ADMIN_API), which verifies HMAC and commits to GitHub; Pages then updates.
+   OPTIMISTIC UI: this tab flips to Hidden / Shown / Removed on confirm; live site follows
+   after the Worker commit + Pages deploy (usually ~1–2 min).
    Project pages: hide/delete individual collages (not the whole project). Home still has
    project-level Hide/Delete. Hide and Delete always ask for confirmation first. */
 (function () {
   'use strict';
-  // ==== must match FORM_TARGET / FORM_CC in assets/project.js ====
-  var FORM_TARGET = 'aae697c61d8971216e3ef477e0b2a4cf';
-  var FORM_CC = 'hushmediacreations+picks@mail.grokbot.com';
-  // ================================================================
-  var FORM_ENDPOINT = 'https://formsubmit.co/ajax/' + FORM_TARGET;
+  // Direct publish (no email): Cloudflare Worker applies signed admin actions to GitHub.
+  var HUSH_ADMIN_API = 'https://hush-admin-publish.hushgazer.workers.dev';
   var LOCAL = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
   var PKEY = 'hush-admin-pending';
   var active = false, key = '', who = 'Hush';
@@ -87,19 +82,11 @@
     return sign(parts.join('|')).then(function (sig) {
       var pl = { schema: 'hush-admin/v1', action: action, slug: slug, title: title || slug, by: who, at: at, nonce: nonce, sig: sig };
       if (isCollage) pl.file = file;
-      var subj = 'Hush admin: ' + action + ' ' + slug + (isCollage ? (' ' + file) : '');
-      var body = {
-        _subject: subj, _template: 'box', _captcha: 'false', _honey: '',
-        action: action, project: slug, collage: file || undefined, requested_at: at,
-        payload: 'HUSHADMIN_JSON_BEGIN ' + JSON.stringify(pl) + ' HUSHADMIN_JSON_END'
-      };
-      if (FORM_CC) body._cc = FORM_CC;
-      return fetch(FORM_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(body) })
+      return fetch(HUSH_ADMIN_API, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(pl) })
         .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) {
-          // Only treat as published-request if FormSubmit clearly accepted it.
-          var ok = r.ok && j && (j.success === true || j.success === 'true' || String(j.success).toLowerCase() === 'true');
-          if (!ok) throw new Error((j && j.message) || ('FormSubmit rejected or failed (HTTP ' + r.status + '). Not published.'));
-          return { local: false };
+          var ok = r.ok && j && j.ok === true;
+          if (!ok) throw new Error((j && j.error) || ('Publish failed (HTTP ' + r.status + '). Not published.'));
+          return { local: false, commit: j.commit };
         }); });
     });
   }
@@ -134,17 +121,17 @@
       // Optimistic: flip this tab instantly, then email the signed request in the background.
       setPending(slug, action);
       onDone();
-      setMsg(msg, action === 'delete' ? ('Removing \u201c' + title + '\u201d\u2026 sending publish request')
-        : action === 'hide' ? ('Hiding \u201c' + title + '\u201d\u2026 sending publish request')
-        : ('Showing \u201c' + title + '\u201d\u2026 sending publish request'), false);
+      setMsg(msg, action === 'delete' ? ('Removing \u201c' + title + '\u201d\u2026 publishing')
+        : action === 'hide' ? ('Hiding \u201c' + title + '\u201d\u2026 publishing')
+        : ('Showing \u201c' + title + '\u201d\u2026 publishing'), false);
       send(action, slug, title).then(function (r) {
         if (r.local) {
           setMsg(msg, 'Local preview: UI updated here. To publish run: ' + r.cmd, false);
           return;
         }
-        setMsg(msg, action === 'delete' ? ('Request accepted for \u201c' + title + '\u201d. Live site updates after publish (usually a few minutes). If it does not change, tell me — do not assume it is live.')
-          : action === 'hide' ? ('Request accepted: hide \u201c' + title + '\u201d. Live site updates after publish. If it stays public, tell me.')
-          : ('Request accepted: show \u201c' + title + '\u201d. Live site updates after publish. If it stays hidden, tell me.'), false);
+        setMsg(msg, action === 'delete' ? ('Published for \u201c' + title + '\u201d. Live site updates after GitHub Pages (usually ~1–2 min).')
+          : action === 'hide' ? ('Published: hide \u201c' + title + '\u201d. Live site updates after GitHub Pages (usually ~1–2 min).')
+          : ('Published: show \u201c' + title + '\u201d. Live site updates after publish. If it stays hidden, tell me.'), false);
       }, function (e) {
         setPending(slug, null);
         onDone();
@@ -285,12 +272,12 @@
         function act(action) {
           if (action === 'hide-collage' && !window.confirm('Hide this collage from Julius and Adam?\n\nAre you sure? You can Show it again later.')) return;
           if (action === 'delete-collage' && !window.confirm('Delete this collage permanently?\n\n\u201c' + label + '\u201d (' + file + ') will be removed from the site. This can\u2019t be undone from here.')) return;
-          // Pending UI only until FormSubmit accepts. Delete does NOT remove the collage until then.
+          // Pending UI only until Worker accepts. Delete does NOT remove the collage until then.
           setPending(key, action);
           if (onChange) onChange(action, { local: false, optimistic: true });
           draw();
           setMsg(msg, (action === 'delete-collage' ? 'Deleting' : action === 'hide-collage' ? 'Hiding' : 'Showing')
-            + ' \u201c' + label + '\u201d\u2026 sending publish request', false);
+            + ' \u201c' + label + '\u201d\u2026 publishing', false);
           send(action, slug, label, { file: file }).then(function (r) {
             if (r.local) {
               if (onChange && action === 'delete-collage') onChange(action, { confirmed: true, local: true });
@@ -298,9 +285,9 @@
               draw();
               return;
             }
-            // FormSubmit accepted — now safe to drop deleted collage from this tab.
+            // Worker accepted — now safe to drop deleted collage from this tab.
             if (onChange && action === 'delete-collage') onChange(action, { confirmed: true });
-            setMsg(msg, (action === 'delete-collage' ? 'Delete request accepted for' : action === 'hide-collage' ? 'Hide request accepted for' : 'Show request accepted for')
+            setMsg(msg, (action === 'delete-collage' ? 'Deleted' : action === 'hide-collage' ? 'Hidden' : 'Shown')
               + ' \u201c' + label + '\u201d. Live site updates after publish. If the live page does not change, tell me — do not assume it is live.', false);
             draw();
           }, function (e) {
