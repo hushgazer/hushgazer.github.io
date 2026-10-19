@@ -814,12 +814,14 @@
     }
     renderBarPreview();
     renderOpinions();
-    var all = done === collages.length && collages.length > 0;
-    document.getElementById('submit').disabled = !all;
+    // Submit is pack-based: empty slots = remakes. Notes are optional and never block.
+    // Do NOT require a pick on every collage (clients may skip some).
+    var ready = filled >= 1 && collages.length > 0;
+    document.getElementById('submit').disabled = !ready;
     document.getElementById('bar-count').textContent = filled + ' of ' + packSize + ' pack slots filled';
-    document.getElementById('need').textContent = all
+    document.getElementById('need').textContent = ready
       ? (filled + ' of ' + packSize + ' pack slots filled' + (filled < packSize ? ' · empty slots = remake' : '') + ' — ready to submit. Drag the bar to reorder.')
-      : ((collages.length - done) + ' collage(s) still need at least one pick.');
+      : ('Tap characters above to fill your pack (notes are optional).');
   }
 
   function cropBox(i, opt) {
@@ -917,7 +919,7 @@
   var sending = false;
   function onSubmit(e) {
     e.preventDefault();
-    if (sending || picks.some(function (p) { return !p || !p.length; })) return;
+    if (sending || filledCount() < 1) return;
     var f = document.getElementById('picks-form');
     if (mode === 'locked') return;
     var nameIn = f.elements.name, nameErr = document.getElementById('name-error');
