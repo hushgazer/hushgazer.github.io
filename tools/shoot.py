@@ -26,9 +26,15 @@ with sync_playwright() as p:
             body = re.sub(r"var FORM_TARGET = '[^']*';", "var FORM_TARGET = '%s';" % target, body)
             route.fulfill(body=body, content_type='application/javascript')
         return h
+    def unhide_demo(route):
+        d = json.loads(route.fetch().text())
+        for x in d['projects']:
+            if x['slug'] == 'demo': x.pop('hidden', None)
+        route.fulfill(body=json.dumps(d), content_type='application/json')
     def new_ctx(**kw):
         c = br.new_context(**kw)
         c.route(re.compile(r'^(?!http://127\.0\.0\.1:8765/).*'), lambda r: r.abort())  # safety: never hit the real internet
+        c.route('**/projects/projects.json', unhide_demo)  # demo is hidden on the live site; tests use it
         return c
 
     # 1) desktop, EMPTY target: thanks panel shows locally, nothing leaves the page

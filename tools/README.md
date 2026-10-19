@@ -85,6 +85,40 @@ no passwords, no trackers, no external scripts. Picks are emailed through FormSu
   chosen character outlined + "PICK #N" (lossless PNG, same size, source untouched)
 * prints `imageBot: <id>` when project.json has one
 
+## 7. Admin: Hide / Unhide / Delete (Hush only)
+
+* Sign-in page: **https://hushgazer.github.io/admin/** (local: http://127.0.0.1:8765/admin/).
+  It is not linked from the home page or any client page and is `noindex`. Client pages
+  (Julius/Adam personal links) never have a login or password field.
+* Name: **Hush**. Password: ask Hush, or see the private notes in `tools/private/`
+  (git-ignored, never published). Change it with `python3 tools/add_admin.py` (prompts);
+  only `SHA-256("Hush|<password>")` is written into `assets/admin-login.js`.
+* After sign-in the tab keeps `sessionStorage` `hush-admin=1` (+ a signing key) and goes to the
+  home page with a purple **ADMIN** bar. Home lists every project, including hidden ones, each
+  with **Hide/Unhide** and **Delete**; project pages show the same controls. **Sign out**
+  clears the session (closing the tab does too).
+* **Hidden** (`"hidden": true` in `projects/projects.json`): left off the public home page;
+  the project URL shows a polite "This project isn't available right now" page to anyone not
+  signed in. A project missing from `projects.json` also shows that page.
+* Each button click (Delete asks for confirmation first) emails a signed request through
+  FormSubmit (same `FORM_TARGET` as the picks, copied via `_cc` to the bot inbox) with subject
+  `Hush admin: <hide|unhide|delete> <slug>` and a payload between
+  `HUSHADMIN_JSON_BEGIN` / `HUSHADMIN_JSON_END`:
+  `{"schema":"hush-admin/v1","action","slug","title","by","at","nonce","sig"}` where
+  `sig = HMAC-SHA256(signKey, "hush-admin/v1|action|slug|at|nonce")`.
+  The admin tab shows "… requested · updates at next publish" until the live site matches.
+* **Picks routine**: for a "Hush admin:" email, save the email text and run
+  `python3 tools/admin_action.py --from-email mail.txt --remove-files` (delete) or without
+  `--remove-files` (hide/unhide). It rejects bad signatures, replays and requests older than
+  7 days (exit code 2: do nothing, tell Hush). Then commit + push and tell Hush.
+* By hand / local preview (the local admin bar never emails; it shows the command):
+  `python3 tools/admin_action.py hide|unhide <slug>`, `python3 tools/admin_action.py delete <slug> [--remove-files]`.
+* Caveat: this sign-in is a convenience gate (the hash is public and a short password can be
+  guessed). Nothing changes on the site unless `admin_action.py` verifies the signature, so a
+  stronger password makes forged requests harder. Hidden projects' slugs are still listed in
+  the public `projects.json`.
+* Test: `python3 tools/test_admin.py` (server on :8765; FormSubmit mocked).
+
 ## 6. Checks before publishing
 
 ```
@@ -92,6 +126,7 @@ python3 -m http.server 8765 &          # from the site root
 python3 tools/shoot.py                 # Playwright: picking, submit (FormSubmit MOCKED), test mode,
                                        # personal links, advisor/decider, lineup, CSP errors
 python3 tools/test_detect_columns.py   # column detection self-test
+python3 tools/test_admin.py            # admin sign-in, hide/delete requests + verification
 java -jar vnu.jar --also-check-css index.html project.html 404.html */index.html assets/style.css
 ```
 Tests never send real submissions: FormSubmit is mocked and all other internet requests

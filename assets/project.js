@@ -468,11 +468,36 @@
 
   function fail(msg) { app.textContent = ''; app.appendChild(el('p', { class: 'error' }, msg)); }
 
+  // ==== HIDDEN PROJECTS ================================================
+  // "hidden": true in projects/projects.json (or not listed there) -> clients get a
+  // polite "not available" page. Hush (signed in on /admin/, see assets/admin.js)
+  // still sees the project, with the admin bar on top.
+  var ADMIN = !!(window.HushAdmin && window.HushAdmin.active);
+  function unavailable() {
+    var main = document.querySelector('main'); main.textContent = '';
+    main.appendChild(el('h1', { id: 'title' }, 'This project isn\u2019t available right now'));
+    main.appendChild(el('p', { class: 'lead', id: 'unavailable' }, 'The collages for this project have been taken down or aren\u2019t ready yet. If you were expecting to make your picks here, please contact Hush Media Creations for an up-to-date link.'));
+    var p = el('p'); p.appendChild(el('a', { href: root }, 'Go to the Hush Media Creations home page')); main.appendChild(p);
+    var bar = document.querySelector('.bar'); if (bar) bar.remove();
+    document.title = 'Not available \u00b7 Hush Media Creations';
+  }
+  function listing() {
+    return fetch(root + 'projects/projects.json', { cache: 'no-cache' })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (d) { return { entry: (d.projects || []).filter(function (x) { return x && x.slug === slug; })[0] || null }; },
+            function () { return null; });   // listing unavailable: don't block the page
+  }
+
   if (!slug || !/^[a-z0-9-]+$/i.test(slug)) { fail('Project not found. Check the link you were sent.'); return; }
-  fetch(root + 'projects/' + slug + '/project.json', { cache: 'no-cache' })
+  var listed = null;
+  listing().then(function (l) {
+    listed = l;
+    if (l && (!l.entry || l.entry.hidden) && !ADMIN) { unavailable(); return; }
+    return fetch(root + 'projects/' + slug + '/project.json', { cache: 'no-cache' })
     .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
     .then(function (p) { return resolveClient(p).then(function (m) { mode = m; return p; }); })
     .then(function (p) {
+      if (ADMIN) window.HushAdmin.projectBar(slug, p.title || slug, listed ? listed.entry : { slug: slug });
       project = p; collages = p.collages || [];
       picks = collages.map(function () { return null; });
       if (mode !== 'locked') load();
@@ -512,4 +537,5 @@
       if (TEST) testBanner();
     })
     .catch(function () { fail('Could not load this project. Check the link you were sent.'); });
+  });
 })();

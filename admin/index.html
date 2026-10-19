@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="strict-origin">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta name="robots" content="noindex, nofollow">
+<title>Studio admin · Hush Media Creations</title>
+<meta name="description" content="Private studio page for Hush Media Creations. Not for clients.">
+<meta name="theme-color" content="#0e0f13">
+<link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body class="home">
+<header class="site-header"><div class="wrap"><a class="brand" href="../"><img src="../assets/favicon.svg" alt="" width="30" height="30"><span>Hush <b>Media</b> Creations</span></a></div></header>
+<main class="wrap">
+  <h1>Studio admin</h1>
+  <p class="lead">For Hush Media Creations staff only. Clients don’t need this page: client picks never ask for a login.</p>
+  <form id="admin-login" class="admin-login" novalidate>
+    <div class="field">
+      <label for="admin-name">Name</label>
+      <select id="admin-name" name="admin-name" autocomplete="username">
+        <option value="Hush">Hush</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="admin-pass">Password</label>
+      <input type="password" id="admin-pass" name="admin-pass" autocomplete="current-password" maxlength="200" required>
+    </div>
+    <p id="login-error" class="error field-error" role="alert" hidden>Wrong name or password.</p>
+    <div><button class="btn" type="submit" id="login-btn">Sign in</button></div>
+    <p class="privacy">Nothing is sent anywhere when you sign in: the password is checked in this browser and the session ends when you close this tab or press Sign out.</p>
+  </form>
+</main>
+<footer>© Hush Media Creations</footer>
+<script src="../assets/admin-login.js"></script>
+</body>
+</html>

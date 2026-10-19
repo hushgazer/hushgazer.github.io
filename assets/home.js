@@ -1,10 +1,12 @@
 (function () {
   'use strict';
   var ul = document.getElementById('projects');
+  var admin = window.HushAdmin && window.HushAdmin.active;
   fetch('projects/projects.json', { cache: 'no-cache' })
     .then(function (r) { return r.json(); })
     .then(function (d) {
       ul.textContent = '';
+      if (admin) { window.HushAdmin.renderHome(ul, d.projects || []); return; } // Hush: every project, incl. hidden
       (d.projects || []).filter(function (p) { return !p.hidden; }).forEach(function (p) {
         var li = document.createElement('li'), a = document.createElement('a');
         a.href = p.slug + '/';

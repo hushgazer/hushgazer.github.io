@@ -119,3 +119,29 @@ textarea{resize:vertical}
 /* transparent (RGBA) collages: show them on white, like the image bots render them */
 .frame,.picks canvas,.bar-thumbs canvas,.op-thumb canvas,.slot canvas,.confirm canvas{background:#fff}
 @media (max-width:700px){.test-banner{font-size:.78rem}.test-banner .tb-actions{margin-left:0}}
+/* admin (only after signing in on /admin/; never shown to clients) */
+select{font:inherit;color:var(--text);background:#0b0c10;border:1px solid var(--line);border-radius:8px;padding:10px}
+.admin-login{max-width:380px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:20px;margin-bottom:30px}
+.admin-bar{position:sticky;top:0;z-index:31;background:#2a1f3d;border-bottom:2px solid #9b7bff;font-size:.9rem}
+.admin-bar .wrap{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;padding-top:8px;padding-bottom:8px}
+.admin-bar strong{letter-spacing:.1em;color:#c9b6ff}
+.adm-who{color:var(--muted)}
+#admin-signout{margin-left:auto}
+.adm-proj{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
+.adm-slug{font-weight:700}
+.adm-actions{display:inline-flex;flex-wrap:wrap;align-items:center;gap:8px}
+.adm-btn{font:inherit;font-size:.85rem;font-weight:700;border:1px solid var(--line);border-radius:999px;padding:5px 14px;background:#2c2e3a;color:var(--text);cursor:pointer}
+.adm-btn:hover{border-color:var(--gold)}
+.adm-btn:disabled{opacity:.5;cursor:wait}
+.adm-danger{border-color:#7a2a2a;color:#ffb4a8}
+.adm-chip{font-size:.75rem;font-weight:700;padding:3px 10px;border-radius:999px;border:1px solid var(--line)}
+.adm-public{color:var(--pick);border-color:var(--pick)}
+.adm-hidden{color:var(--gold);border-color:var(--gold2)}
+.adm-pending{color:#c9b6ff;border-color:#9b7bff}
+.adm-gone{color:var(--warn);border-color:var(--warn)}
+.adm-msg{color:#c9b6ff;font-size:.88rem;margin:0}
+.adm-link{color:#c9b6ff}
+.admin-list li{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:0 0 14px}
+.admin-list li a{border:0;background:none}
+.admin-list li .adm-actions{padding:0 18px}
+.admin-list li.adm-is-hidden{opacity:.8;border-style:dashed}
