@@ -2,7 +2,7 @@
 font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--bg);color:var(--text)}
-body{line-height:1.5;padding-bottom:200px}
+body{line-height:1.5;padding-bottom:220px}
 a{color:var(--gold)}
 .wrap{max-width:1400px;margin:0 auto;padding:0 20px}
 .site-header{border-bottom:1px solid var(--line);background:linear-gradient(180deg,#15161d,#0e0f13)}
@@ -101,9 +101,19 @@ textarea{resize:vertical}
 .bar{position:fixed;left:0;right:0;bottom:0;z-index:20;background:rgba(14,15,19,.97);border-top:1px solid var(--line)}
 .bar .wrap{display:flex;align-items:center;gap:10px;padding-top:8px;padding-bottom:8px;flex-wrap:wrap}
 .bar-thumbs{display:flex;flex-wrap:nowrap;gap:12px;overflow-x:auto;overflow-y:visible;flex:1;min-width:0;align-items:center;min-height:132px;padding:12px 12px 8px 12px;scroll-behavior:auto;-webkit-overflow-scrolling:touch;scrollbar-width:thin}
-.bar-empty{color:var(--muted);font-size:.9rem;padding:4px 2px}
+.bar-side{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex:0 0 auto}
+.bar-hint{font-size:.78rem;color:var(--muted);white-space:nowrap;max-width:16rem;text-align:right;line-height:1.25}
+.bar-hint.is-flash{color:var(--gold);font-weight:700}
+.bar-slot{position:relative;flex:0 0 auto;margin:0;width:96px;min-height:122px;padding:5px;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:12px;box-sizing:border-box}
+.bar-slot-empty{background:transparent;border:2px dashed #4a4d5c;color:var(--muted);cursor:default;touch-action:manipulation;user-select:none}
+.bar-slot-empty:hover,.bar-slot-empty.is-drop-target{border-color:var(--gold);background:rgba(242,192,99,.08);color:var(--gold)}
+.bar-slot-empty .bar-slot-new{font-weight:800;font-size:.95rem;letter-spacing:.04em;text-transform:uppercase;margin-top:18px}
+.bar-slot-empty .bar-slot-hint{font-size:.7rem;opacity:.85;margin-top:2px}
+.bar-slot-empty .preview-badge.sm{top:-8px;left:-8px;background:#4a4d5c;color:#ecebf2}
+.bar-slot-empty.is-drop-target .preview-badge.sm{background:var(--gold);color:#1a1408}
 .bar-card.preview-card{position:relative;flex:0 0 auto;margin:0;width:96px;padding:5px;display:flex;flex-direction:column;align-items:center;background:var(--panel2);border:2px solid var(--pick);border-radius:12px;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;transition:opacity .15s ease,transform .15s ease,box-shadow .15s ease}
 .bar-card.preview-card:hover{box-shadow:0 0 0 2px rgba(242,192,99,.45)}
+.bar-card.preview-card.is-drop-target{box-shadow:0 0 0 3px var(--gold);border-color:var(--gold)}
 .bar-card.preview-card canvas{display:block;width:82px;height:110px;object-fit:contain;border-radius:8px;pointer-events:none;background:#fff}
 .bar-card.preview-card .preview-badge.sm{top:-8px;left:-8px}
 .preview-x{position:absolute;top:-10px;right:-10px;z-index:3;width:28px;height:28px;padding:0;border:2px solid var(--panel2,#1b1d24);border-radius:50%;background:#e5484d;color:#fff;font-size:18px;font-weight:800;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.45);touch-action:manipulation}
@@ -124,7 +134,7 @@ textarea{resize:vertical}
 .preview-ghost.lifted > canvas,.preview-ghost.lifted > .preview-badge{transform:scale(1.12) rotate(-3deg)}
 body.lineup-dragging{cursor:grabbing!important;user-select:none;-webkit-user-select:none}
 body.lineup-dragging *{cursor:grabbing!important}
-@media (max-width:700px){.bar .wrap{gap:6px}.bar-thumbs{flex:1 1 100%;order:-1;min-height:118px;gap:10px}.bar-card.preview-card{width:82px}.bar-card.preview-card canvas{width:68px;height:94px}}
+@media (max-width:700px){.bar .wrap{gap:6px}.bar-thumbs{flex:1 1 100%;order:-1;min-height:118px;gap:10px}.bar-side{flex-direction:row;flex-wrap:wrap;align-items:center;justify-content:flex-end;width:100%;gap:8px}.bar-hint{max-width:none;font-size:.72rem}.bar-card.preview-card,.bar-slot{width:82px;min-height:106px}.bar-card.preview-card canvas{width:68px;height:94px}}
 @media (prefers-reduced-motion:reduce){.preview-drop{animation:none}.bar-card.preview-card,.preview-ghost > *{transition:none}}
 .bar-count{font-size:.85rem;color:var(--muted);white-space:nowrap}
 .bar .btn{padding:10px 16px;font-size:.9rem;text-decoration:none;white-space:nowrap}
@@ -134,6 +144,7 @@ body.lineup-dragging *{cursor:grabbing!important}
 .picks li.lineup-hint{grid-column:1/-1;border-style:dashed;color:var(--muted);display:flex;align-items:center;justify-content:center;gap:10px;padding:18px;text-align:center}
 .picks li.lineup-hint .ph.soft{border:0;background:transparent;color:var(--muted);font-size:1.4rem;width:auto;height:auto;margin:0}
 .picks li.preview-li{position:relative;border-color:var(--pick)}
+.picks li.preview-li.slot-empty{border-style:dashed;border-color:#4a4d5c;color:var(--muted)}
 .picks li.preview-li a{display:flex;flex-direction:column;align-items:center;gap:4px;text-decoration:none;position:relative}
 #lineup{display:none!important} /* legacy mid-page Final lineup removed */
 /* transparent (RGBA) collages: show them on white, like the image bots render them */
@@ -229,7 +240,7 @@ background:rgba(255,255,255,.035);border:1px solid var(--line);border-radius:14p
 .test-banner button.tb-exit{text-decoration:none;background:#1a0d00;color:#ff8c1a;border-radius:999px;padding:4px 14px}
 .admin-bar + .test-banner{top:44px}
 /* keep the "Not you? Switch" pill clear of the bottom picks bar (Review & submit) */
-body:has(.bar) .who-pill{bottom:178px}
+body:has(.bar) .who-pill{bottom:198px}
 
 /* per-collage admin controls (Hush only, on project pages) */
 .collage-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px}
@@ -241,7 +252,7 @@ body:has(.bar) .who-pill{bottom:178px}
 .collage.adm-collage-hidden{opacity:.55;border-style:dashed}
 .collage.adm-collage-hidden .frame{filter:grayscale(.35)}
 .collage.adm-collage-hidden::before{content:"Hidden from clients";display:inline-block;font-size:.75rem;font-weight:700;color:var(--gold);border:1px solid var(--gold2);border-radius:999px;padding:2px 10px;margin-bottom:8px}
-@media (max-width:700px){body{padding-bottom:240px}body.home{padding-bottom:0}body:has(.bar) .who-pill{bottom:230px}}
+@media (max-width:700px){body{padding-bottom:270px}body.home{padding-bottom:0}body:has(.bar) .who-pill{bottom:260px}}
 
 /* signed-in strip in the header: name, Not you? Switch, Sign out (assets/who.js) */
 .who-acct{margin-left:auto;display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:8px 10px;font-size:.9rem}

@@ -18,7 +18,8 @@
   var root = app.getAttribute('data-root') || './';
   var slug = app.getAttribute('data-slug') || new URLSearchParams(location.search).get('p') || '';
   var picks = [];      // picks[i] = sorted array of option numbers (1-based); [] = none
-  var lineupOrder = []; // [{c, o}] selection order / drag order for Final lineup preview
+  var lineupOrder = []; // fixed-length pack slots: [{c,o}|null, ...] length = packSize
+  var packSize = 8;    // from project.json packSize/slots (default 8)
   var collages = [];   // config
   var imgs = [];       // loaded <img> elements
   var project = null;
@@ -125,7 +126,7 @@
 
   function save() {
     try {
-      localStorage.setItem(storeKey, JSON.stringify({ picks: picks, lineup: lineupOrder }));
+      localStorage.setItem(storeKey, JSON.stringify({ picks: picks, lineup: lineupOrder, packSize: packSize }));
       if (isAdvisor()) localStorage.setItem(storeKey + ':notes', JSON.stringify({ notes: notes, overall: document.getElementById('overall').value }));
     } catch (e) {}
   }
@@ -137,34 +138,93 @@
     if (typeof v === 'number' && v >= 1) return [v];
     return [];
   }
-  function lineupKey(e) { return e.c + ':' + e.o; }
+  function lineupKey(e) { return e && e.c != null ? (e.c + ':' + e.o) : ''; }
+  function emptySlots() {
+    var a = []; for (var i = 0; i < packSize; i++) a.push(null); return a;
+  }
+  function firstEmptySlot() {
+    for (var i = 0; i < lineupOrder.length; i++) if (!lineupOrder[i]) return i;
+    return -1;
+  }
+  function filledCount() {
+    var n = 0; lineupOrder.forEach(function (e) { if (e) n++; }); return n;
+  }
+  function clearCharacterFromSlots(c, o) {
+    var changed = false;
+    lineupOrder = lineupOrder.map(function (e) {
+      if (e && e.c === c && e.o === o) { changed = true; return null; }
+      return e;
+    });
+    return changed;
+  }
   function rebuildLineupFromPicks() {
-    var out = [];
-    picks.forEach(function (sel, i) {
-      (sel || []).forEach(function (o) { out.push({ c: i, o: o }); });
+    // Migrate dense picks → fill first pack slots in collage order; pad with nulls.
+    var out = emptySlots(), i = 0;
+    picks.forEach(function (sel, ci) {
+      (sel || []).forEach(function (o) {
+        if (i < packSize) out[i++] = { c: ci, o: o };
+      });
     });
     return out;
   }
   function normalizeLineup(raw) {
+    // Accept dense legacy arrays or fixed-length (with nulls). Pad / trim to packSize.
+    var out = emptySlots();
     if (!Array.isArray(raw)) return rebuildLineupFromPicks();
-    var seen = {}, out = [];
+    var dense = [], seen = {};
     raw.forEach(function (e) {
-      if (!e) return;
+      if (e == null) { dense.push(null); return; }
       var c = Number(e.c), o = Number(e.o);
       if (!(c >= 0 && c < collages.length && o >= 1)) return;
       if ((picks[c] || []).indexOf(o) < 0) return;
       var k = c + ':' + o;
       if (seen[k]) return;
-      seen[k] = 1; out.push({ c: c, o: o });
+      seen[k] = 1; dense.push({ c: c, o: o });
     });
-    // Append any picks missing from saved order (e.g. after collage delete)
-    picks.forEach(function (sel, i) {
-      (sel || []).forEach(function (o) {
-        var k = i + ':' + o;
-        if (!seen[k]) { seen[k] = 1; out.push({ c: i, o: o }); }
+    // If saved array was already fixed-length with holes, keep hole positions.
+    var hasNull = raw.some(function (e) { return e == null; });
+    var hasLen = raw.length === packSize;
+    if (hasNull || hasLen) {
+      var j = 0;
+      raw.forEach(function (e) {
+        if (j >= packSize) return;
+        if (e == null) { out[j++] = null; return; }
+        var c = Number(e.c), o = Number(e.o);
+        var k = c + ':' + o;
+        if (seen[k] && (picks[c] || []).indexOf(o) >= 0) {
+          // only place once
+          if (!out.some(function (x) { return x && x.c === c && x.o === o; }))
+            out[j] = { c: c, o: o };
+        }
+        j++;
       });
-    });
+      // Append any picks missing from saved slots into first empties
+      picks.forEach(function (sel, i) {
+        (sel || []).forEach(function (o) {
+          var placed = out.some(function (e) { return e && e.c === i && e.o === o; });
+          if (!placed) {
+            var slot = out.indexOf(null);
+            if (slot >= 0) out[slot] = { c: i, o: o };
+          }
+        });
+      });
+      return out;
+    }
+    // Dense legacy: place in order into first slots
+    dense.forEach(function (e, i) { if (i < packSize && e) out[i] = e; });
     return out;
+  }
+  function flashBarHint(msg) {
+    var h = document.getElementById('bar-hint');
+    if (!h) return;
+    var prev = h.textContent;
+    h.textContent = msg;
+    h.classList.add('is-flash');
+    clearTimeout(flashBarHint._t);
+    flashBarHint._t = setTimeout(function () {
+      h.textContent = prev || 'Feel free to move things around';
+      h.classList.remove('is-flash');
+    }, 1800);
   }
   function load() {
     try {
@@ -205,17 +265,23 @@
     st.textContent = sel.length ? ('Picked: ' + fmtOpts(sel) + ' · tap again to unpick') : 'Not picked yet · tap to pick (as many as you want)';
     st.classList.toggle('done', sel.length > 0);
   }
-  // Multi-select: tap to pick, tap again to unpick. Any number per collage.
-  // New picks append to lineupOrder (Preview 1, 2, …); unpick removes that card.
+  // Multi-select: tap to pick (fills first empty pack slot), tap again to unpick
+  // (clears that character from any slot). Pack slots keep fixed length / holes.
   function togglePick(i, opt) {
     var cur = (picks[i] || []).slice();
     var idx = cur.indexOf(opt);
     if (idx >= 0) {
       cur.splice(idx, 1);
-      lineupOrder = lineupOrder.filter(function (e) { return !(e.c === i && e.o === opt); });
+      clearCharacterFromSlots(i, opt);
     } else {
       cur.push(opt);
-      lineupOrder.push({ c: i, o: opt });
+      var slot = firstEmptySlot();
+      if (slot >= 0) {
+        lineupOrder[slot] = { c: i, o: opt };
+      } else {
+        // Pack full: keep collage pick, briefly hint — don't overwrite a slot.
+        flashBarHint('Pack full — clear a slot (×) or drag to swap');
+      }
     }
     picks[i] = cur.sort(function (a, b) { return a - b; });
     save();
@@ -227,6 +293,13 @@
     lineupOrder = normalizeLineup(lineupOrder);
     save();
     syncCollageUI(i);
+  }
+  function clearSlot(idx) {
+    // Clear pack slot only (leave collage pick). Holes stay; no collapse.
+    if (idx < 0 || idx >= lineupOrder.length) return;
+    lineupOrder[idx] = null;
+    save();
+    renderSummary();
   }
 
   // ==== DECIDER / ADVISOR =================================================
@@ -275,45 +348,88 @@
     var sec = document.getElementById('lineup');
     if (sec) sec.remove();
   }
+  function ensureBarHint() {
+    if (document.getElementById('bar-hint')) return;
+    var count = document.getElementById('bar-count');
+    if (!count) return;
+    var side = count.parentElement;
+    if (!side || !side.classList.contains('bar-side')) {
+      side = document.createElement('div');
+      side.className = 'bar-side';
+      var wrap = count.parentElement;
+      var btn = wrap && wrap.querySelector('a.btn');
+      wrap.insertBefore(side, count);
+      side.appendChild(count);
+      if (btn) side.appendChild(btn);
+    }
+    var hint = document.createElement('span');
+    hint.id = 'bar-hint'; hint.className = 'bar-hint';
+    hint.textContent = 'Feel free to move things around';
+    side.insertBefore(hint, side.querySelector('a.btn'));
+  }
   function renderBarPreview() {
+    ensureBarHint();
     var bar = document.getElementById('bar-thumbs');
     if (!bar) return;
     bar.textContent = '';
     bar.setAttribute('role', 'list');
-    bar.setAttribute('aria-label', 'Your lineup in selection order. Drag to reorder.');
-    if (!lineupOrder.length) {
-      bar.appendChild(el('span', { class: 'bar-empty' }, 'Tap characters — they’ll appear here in order'));
-      return;
-    }
-    lineupOrder.forEach(function (e, idx) {
+    bar.setAttribute('aria-label', 'Pack lineup of ' + packSize + ' slots. Drag filled cards to reorder. Empty slots mean remake.');
+    // Always show exactly packSize slot boxes (filled or empty "New").
+    for (var idx = 0; idx < packSize; idx++) {
+      var e = lineupOrder[idx];
+      if (!e) {
+        var empty = el('div', {
+          class: 'bar-slot bar-slot-empty',
+          role: 'listitem',
+          'data-idx': String(idx),
+          tabindex: '0',
+          'aria-label': 'Pack slot ' + (idx + 1) + ', empty — remake requested. Drop a pick here.'
+        });
+        empty.appendChild(el('span', { class: 'preview-badge sm', 'aria-hidden': 'true' }, '#' + (idx + 1)));
+        empty.appendChild(el('span', { class: 'bar-slot-new', 'aria-hidden': 'true' }, 'New'));
+        empty.appendChild(el('span', { class: 'bar-slot-hint', 'aria-hidden': 'true' }, 'Remake'));
+        bindEmptyDrop(empty, idx);
+        bar.appendChild(empty);
+        continue;
+      }
       var card = el('div', {
-        class: 'bar-card preview-card',
+        class: 'bar-card preview-card bar-slot',
         role: 'listitem',
         'data-idx': String(idx),
         'data-c': String(e.c),
         'data-o': String(e.o),
         tabindex: '0',
         'aria-grabbed': 'false',
-        'aria-label': 'Pick ' + (idx + 1) + '. Drag to reorder.'
+        'aria-label': 'Pack slot ' + (idx + 1) + '. Drag to reorder. Press Delete to clear.'
       });
       card.appendChild(el('span', { class: 'preview-badge sm', 'aria-hidden': 'true' }, '#' + (idx + 1)));
       var cv = cropCanvas(e.c, e.o, 140);
       if (cv) { cv.setAttribute('aria-hidden', 'true'); card.appendChild(cv); }
-      var x = el('button', { type: 'button', class: 'preview-x', 'aria-label': 'Remove pick ' + (idx + 1) }, '×');
+      var x = el('button', { type: 'button', class: 'preview-x', 'aria-label': 'Clear pack slot ' + (idx + 1) }, '×');
       x.addEventListener('pointerdown', function (ev) { ev.stopPropagation(); });
-      x.addEventListener('click', function (ev) {
-        ev.preventDefault(); ev.stopPropagation();
-        togglePick(e.c, e.o); // deselects on collage + removes from bar + renumbers
-      });
+      x.addEventListener('click', (function (slotIdx) {
+        return function (ev) {
+          ev.preventDefault(); ev.stopPropagation();
+          clearSlot(slotIdx);
+        };
+      })(idx));
       card.appendChild(x);
       bindPreviewDrag(card, idx);
       bar.appendChild(card);
-    });
+    }
   }
 
-  // Pointer-based drag (mouse + touch). The card lifts into a floating clone that
-  // follows the pointer; a dashed gap shows where it will land; drop to place.
+  // Pointer-based drag (mouse + touch). Fixed slot count: drop on another slot
+  // SWAPS; drop on empty MOVES (source becomes empty). Holes never collapse.
   var dragState = null;
+  function bindEmptyDrop(fig, idx) {
+    // Empty slots are drop targets only (no drag start). Keyboard: nothing to move.
+    fig.addEventListener('keydown', function (ev) {
+      if (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight' || ev.key === 'ArrowUp' || ev.key === 'ArrowDown') {
+        // no-op on empty
+      }
+    });
+  }
   function bindPreviewDrag(fig, idx) {
     fig.addEventListener('pointerdown', function (ev) {
       if (ev.button != null && ev.button !== 0) return;
@@ -328,7 +444,7 @@
       } else if (ev.key === 'ArrowRight' || ev.key === 'ArrowDown') {
         ev.preventDefault(); movePreview(idx, idx + 1);
       } else if (ev.key === 'Delete' || ev.key === 'Backspace') {
-        ev.preventDefault(); var e = lineupOrder[idx]; if (e) togglePick(e.c, e.o);
+        ev.preventDefault(); clearSlot(idx);
       }
     });
   }
@@ -368,25 +484,45 @@
       requestAnimationFrame(function () { if (st.ghost) st.ghost.classList.add('lifted'); });
       autoScroll();
     }
+    function slotUnderPointer() {
+      var slots = Array.prototype.slice.call(strip.querySelectorAll('.bar-slot'));
+      for (var k = 0; k < slots.length; k++) {
+        if (slots[k].classList.contains('is-dragging')) continue;
+        var rr = slots[k].getBoundingClientRect();
+        if (st.x >= rr.left && st.x <= rr.right && st.y >= rr.top && st.y <= rr.bottom) {
+          return Number(slots[k].getAttribute('data-idx'));
+        }
+      }
+      // Nearest by midpoint (wrap-safe horizontal strip)
+      var best = st.from, bestDist = Infinity;
+      slots.forEach(function (node) {
+        if (node.classList.contains('is-dragging')) return;
+        var rr = node.getBoundingClientRect();
+        var cx = rr.left + rr.width / 2, cy = rr.top + rr.height / 2;
+        var d = Math.abs(st.x - cx) + Math.abs(st.y - cy) * 0.25;
+        if (d < bestDist) { bestDist = d; best = Number(node.getAttribute('data-idx')); }
+      });
+      return best;
+    }
     function place() {
       st.ghost.style.transform = 'translate(' + (st.x - st.ox) + 'px,' + (st.y - st.oy) + 'px)';
-      var others = Array.prototype.slice.call(strip.querySelectorAll('.preview-card:not(.is-dragging)'));
-      var insertAt = others.length;
-      for (var k = 0; k < others.length; k++) {
-        var rr = others[k].getBoundingClientRect();
-        // same row (wrap-safe) and left of midpoint, or on an earlier row
-        if (st.y < rr.top) { insertAt = k; break; }
-        if (st.y <= rr.bottom && st.x < rr.left + rr.width / 2) { insertAt = k; break; }
-      }
-      if (insertAt === st.over && st.ph.parentNode) return;
-      st.over = insertAt;
-      if (insertAt === st.from) {          // back home: highlight original slot
+      var over = slotUnderPointer();
+      if (over === st.over && st.ph.parentNode) return;
+      st.over = over;
+      var target = strip.querySelector('.bar-slot[data-idx="' + over + '"]');
+      // Clear previous drop highlight
+      strip.querySelectorAll('.bar-slot.is-drop-target').forEach(function (n) { n.classList.remove('is-drop-target'); });
+      if (over === st.from) {
         if (st.ph.parentNode) st.ph.remove();
         fig.classList.add('is-home');
       } else {
         fig.classList.remove('is-home');
-        if (others[insertAt]) strip.insertBefore(st.ph, others[insertAt]);
-        else strip.appendChild(st.ph);
+        if (target) {
+          target.classList.add('is-drop-target');
+          // Show drop gap before target for visual feedback
+          if (st.ph.parentNode) st.ph.remove();
+          strip.insertBefore(st.ph, target);
+        }
       }
     }
     function autoScroll() {
@@ -415,17 +551,19 @@
       fig.removeEventListener('pointercancel', onUp);
       cancelAnimationFrame(st.raf);
       dragState = null;
-      if (!st.started) return;               // plain tap: nothing to do
-      var insertAt = st.over, from = st.from, cancelled = e && e.type === 'pointercancel';
+      if (!st.started) return;
+      var to = st.over, from = st.from, cancelled = e && e.type === 'pointercancel';
       if (st.ghost) st.ghost.remove();
       if (st.ph && st.ph.parentNode) st.ph.remove();
       fig.classList.remove('is-dragging', 'is-home');
       fig.setAttribute('aria-grabbed', 'false');
       document.body.classList.remove('lineup-dragging');
-      if (!cancelled && insertAt != null && insertAt !== from) {
-        var item = lineupOrder.splice(from, 1)[0];
-        if (insertAt > lineupOrder.length) insertAt = lineupOrder.length;
-        lineupOrder.splice(insertAt, 0, item);
+      strip.querySelectorAll('.bar-slot.is-drop-target').forEach(function (n) { n.classList.remove('is-drop-target'); });
+      if (!cancelled && to != null && to !== from) {
+        // Swap (filled↔filled) or move into empty (source becomes null). Fixed length.
+        var tmp = lineupOrder[from];
+        lineupOrder[from] = lineupOrder[to];
+        lineupOrder[to] = tmp;
         save();
       }
       var keep = strip.scrollLeft;
@@ -437,32 +575,53 @@
     fig.addEventListener('pointercancel', onUp);
   }
   function movePreview(from, to) {
-    if (from < 0 || to < 0 || from >= lineupOrder.length || to >= lineupOrder.length || from === to) return;
-    var item = lineupOrder.splice(from, 1)[0];
-    lineupOrder.splice(to, 0, item);
+    if (from < 0 || to < 0 || from >= packSize || to >= packSize || from === to) return;
+    if (!lineupOrder[from]) return;
+    var tmp = lineupOrder[from];
+    lineupOrder[from] = lineupOrder[to];
+    lineupOrder[to] = tmp;
     save();
     renderSummary();
   }
+
   function downloadLineup() {
     var parts = [];
     lineupOrder.forEach(function (e, idx) {
+      if (!e) {
+        parts.push({ cv: null, label: '#' + (idx + 1) + ' NEW', empty: true });
+        return;
+      }
       var cv = nativeCrop(e.c, e.o);
-      if (cv) parts.push({ cv: cv, label: '#' + (idx + 1) });
+      if (cv) parts.push({ cv: cv, label: '#' + (idx + 1), empty: false });
     });
-    if (!parts.length) return;
-    var pad = 24, lab = 64, maxH = Math.max.apply(null, parts.map(function (p) { return p.cv.height; }));
-    var W = parts.reduce(function (s, p) { return s + p.cv.width; }, 0) + pad * (parts.length + 1);
+    if (!parts.some(function (p) { return !p.empty; })) return;
+    var pad = 24, lab = 64;
+    var filledH = parts.filter(function (p) { return p.cv; }).map(function (p) { return p.cv.height; });
+    var maxH = filledH.length ? Math.max.apply(null, filledH) : 400;
+    var slotW = parts.filter(function (p) { return p.cv; }).map(function (p) { return p.cv.width; });
+    var avgW = slotW.length ? Math.round(slotW.reduce(function (a, b) { return a + b; }, 0) / slotW.length) : 280;
+    var W = parts.reduce(function (s, p) { return s + (p.cv ? p.cv.width : avgW); }, 0) + pad * (parts.length + 1);
     var out = document.createElement('canvas'); out.width = W; out.height = maxH + lab + pad * 2;
     var g = out.getContext('2d');
     g.fillStyle = '#14151b'; g.fillRect(0, 0, out.width, out.height);
     g.font = 'bold 34px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'top'; g.fillStyle = '#ecebf2';
     var x = pad;
     parts.forEach(function (p) {
-      g.fillStyle = '#ffffff'; g.fillRect(x, pad + (maxH - p.cv.height), p.cv.width, p.cv.height);
-      g.drawImage(p.cv, x, pad + (maxH - p.cv.height));
+      var w = p.cv ? p.cv.width : avgW;
+      if (p.cv) {
+        g.fillStyle = '#ffffff'; g.fillRect(x, pad + (maxH - p.cv.height), p.cv.width, p.cv.height);
+        g.drawImage(p.cv, x, pad + (maxH - p.cv.height));
+      } else {
+        g.strokeStyle = '#f2c063'; g.lineWidth = 4; g.setLineDash([10, 8]);
+        g.strokeRect(x + 2, pad + 2, w - 4, maxH - 4);
+        g.setLineDash([]);
+        g.fillStyle = '#f2c063'; g.font = 'bold 28px system-ui, sans-serif';
+        g.fillText('NEW', x + w / 2, pad + maxH / 2 - 20);
+        g.font = 'bold 34px system-ui, sans-serif'; g.fillStyle = '#ecebf2';
+      }
       g.fillStyle = '#ecebf2';
-      g.fillText(p.label, x + p.cv.width / 2, pad + maxH + 14);
-      x += p.cv.width + pad;
+      g.fillText(p.label, x + w / 2, pad + maxH + 14);
+      x += w + pad;
     });
     out.toBlob(function (blob) {
       if (!blob) return;
@@ -524,8 +683,11 @@
             picks.splice(idx, 1);
             imgs.splice(idx, 1);
             notes.splice(idx, 1);
-            lineupOrder = lineupOrder.filter(function (e) { return e.c !== idx; })
-              .map(function (e) { return { c: e.c > idx ? e.c - 1 : e.c, o: e.o }; });
+            lineupOrder = lineupOrder.map(function (e) {
+              if (!e) return null;
+              if (e.c === idx) return null;
+              return { c: e.c > idx ? e.c - 1 : e.c, o: e.o };
+            });
             save();
           }
           sec.remove();
@@ -585,7 +747,7 @@
     removeLegacyLineup();
     var list = document.getElementById('picks');
     list.textContent = '';
-    var done = 0, totalPicks = lineupOrder.length;
+    var done = 0, filled = filledCount();
     collages.forEach(function (c, i) { if ((picks[i] || []).length) done++; });
     // Ensure a Download button exists in the review section (not a mid-page lineup).
     var sumH = document.getElementById('sum-h');
@@ -598,17 +760,25 @@
       wrap.appendChild(dl);
     }
     var dlBtn = document.getElementById('lineup-download');
-    if (dlBtn) dlBtn.disabled = !lineupOrder.length;
+    if (dlBtn) dlBtn.disabled = filled === 0;
 
-    if (!lineupOrder.length) {
+    var anySlot = lineupOrder.some(function (e) { return !!e; });
+    if (!anySlot) {
       var emptyLi = el('li', { class: 'lineup-hint' });
       emptyLi.appendChild(el('span', { class: 'ph soft', 'aria-hidden': 'true' }, '＋'));
-      emptyLi.appendChild(document.createTextNode('Tap characters above — they’ll appear in the bar below in order. Drag to reorder.'));
+      emptyLi.appendChild(document.createTextNode('Tap characters above — they fill pack slots below. Leave slots empty for remakes. Drag to reorder.'));
       list.appendChild(emptyLi);
     } else {
       lineupOrder.forEach(function (e, idx) {
-        var li = el('li', { class: 'preview-li' });
-        var a = el('a', { href: '#collage-' + (e.c + 1), title: 'Pick #' + (idx + 1) });
+        var li = el('li', { class: e ? 'preview-li' : 'preview-li slot-empty' });
+        if (!e) {
+          li.appendChild(el('span', { class: 'preview-badge sm', 'aria-hidden': 'true' }, '#' + (idx + 1)));
+          li.appendChild(el('span', { class: 'ph soft' }, 'New'));
+          li.appendChild(document.createTextNode('#' + (idx + 1) + ' remake'));
+          list.appendChild(li);
+          return;
+        }
+        var a = el('a', { href: '#collage-' + (e.c + 1), title: 'Pack slot #' + (idx + 1) });
         a.appendChild(el('span', { class: 'preview-badge sm', 'aria-hidden': 'true' }, '#' + (idx + 1)));
         a.appendChild(cropCanvas(e.c, e.o, 150));
         a.appendChild(document.createTextNode('#' + (idx + 1)));
@@ -619,9 +789,9 @@
     renderOpinions();
     var all = done === collages.length && collages.length > 0;
     document.getElementById('submit').disabled = !all;
-    document.getElementById('bar-count').textContent = done + '/' + collages.length + ' · ' + totalPicks + ' pick' + (totalPicks === 1 ? '' : 's');
+    document.getElementById('bar-count').textContent = filled + ' of ' + packSize + ' pack slots filled';
     document.getElementById('need').textContent = all
-      ? ('All collages have a pick (' + totalPicks + ' total) — ready to submit. Drag the bar below to reorder.')
+      ? (filled + ' of ' + packSize + ' pack slots filled' + (filled < packSize ? ' · empty slots = remake' : '') + ' — ready to submit. Drag the bar to reorder.')
       : ((collages.length - done) + ' collage(s) still need at least one pick.');
   }
 
@@ -666,11 +836,14 @@
           note: isAdvisor() && notes[i] && notes[i].trim() ? notes[i].trim() : undefined
         };
       }),
-      // Ordered preview for the image bot / sheet tools (drag order = client preference).
+      packSize: packSize,
+      // Fixed-length pack lineup (null = empty slot → NEW / remake requested).
       lineup: lineupOrder.map(function (e, idx) {
+        if (!e) return null;
         return { collage: e.c + 1, option: e.o, previewIndex: idx + 1 };
       }),
       summary: lineupOrder.map(function (e, idx) {
+        if (!e) return '#' + (idx + 1) + ' NEW / remake requested';
         return '#' + (idx + 1) + ' Collage ' + (e.c + 1) + ' option ' + e.o;
       }).join('; ')
     };
@@ -690,10 +863,15 @@
           return acc;
         }, []);
     thanksLine.forEach(function (e, idx) {
-      var li = el('li', { class: 'preview-li' });
+      var li = el('li', { class: e ? 'preview-li' : 'preview-li slot-empty' });
       li.appendChild(el('span', { class: 'preview-badge sm', 'aria-hidden': 'true' }, '#' + (idx + 1)));
-      li.appendChild(cropCanvas(e.collage - 1, e.option, 150));
-      li.appendChild(document.createTextNode('#' + (idx + 1)));
+      if (!e) {
+        li.appendChild(el('span', { class: 'ph soft' }, 'New'));
+        li.appendChild(document.createTextNode('#' + (idx + 1) + ' remake'));
+      } else {
+        li.appendChild(cropCanvas(e.collage - 1, e.option, 150));
+        li.appendChild(document.createTextNode('#' + (idx + 1)));
+      }
       strip.appendChild(li);
     });
     box.appendChild(strip);
@@ -764,7 +942,7 @@
 
   function resetAll() {
     collages.forEach(function (c, i) { picks[i] = []; syncCollageUI(i); });
-    lineupOrder = [];
+    lineupOrder = emptySlots();
     save();
     try { localStorage.removeItem(storeKey); localStorage.removeItem(storeKey + ':notes'); } catch (e) {}
     notes = []; document.querySelectorAll('.note-field textarea').forEach(function (t) { t.value = ''; });
@@ -834,11 +1012,13 @@
     .then(function (p) {
       if (ADMIN) window.HushAdmin.projectBar(slug, p.title || slug, listed ? listed.entry : { slug: slug });
       project = p;
+      var ps = Number(p.packSize != null ? p.packSize : p.slots);
+      packSize = (ps >= 1 && ps === (ps | 0) && ps <= 40) ? ps : 8;
       // Clients never see collages marked hidden in project.json; admin still does (greyed).
       var raw = p.collages || [];
       collages = ADMIN ? raw.slice() : raw.filter(function (c) { return c && !c.hidden; });
       picks = collages.map(function () { return []; });
-      lineupOrder = [];
+      lineupOrder = emptySlots();
       if (mode !== 'locked') load();
       document.title = p.title + ' — Pick your characters · Hush Media Creations';
       document.getElementById('title').textContent = p.title;

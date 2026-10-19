@@ -1,6 +1,7 @@
 {
   "title": "Demo Project (Sample)",
   "description": "Sample collages to preview how picking works.",
+  "packSize": 8,
   "collages": [
     {
       "file": "collage-1.png",

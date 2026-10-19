@@ -1,6 +1,7 @@
 {
   "title": "Kraken",
-  "description": "Tap the characters you like in each collage — as many as you want. Tap again to unpick.",
+  "description": "Tap the characters you like in each collage \u2014 as many as you want. Tap again to unpick.",
+  "packSize": 8,
   "collages": [
     {
       "file": "collage-1.png",

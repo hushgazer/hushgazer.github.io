@@ -9,12 +9,13 @@
     {
       "slug": "kraken",
       "title": "Kraken",
-      "description": "Tap the characters you like in each collage — as many as you want. Tap again to unpick."
+      "description": "Tap the characters you like in each collage \u2014 as many as you want. Tap again to unpick.",
+      "hidden": true
     },
     {
       "slug": "lion",
       "title": "Lion",
-      "description": "Tap the characters you like in each collage — as many as you want. Tap again to unpick."
+      "description": "Tap the characters you like in each collage \u2014 as many as you want. Tap again to unpick."
     }
   ]
 }
