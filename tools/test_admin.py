@@ -115,7 +115,7 @@ with sync_playwright() as p:
     c, pg = ctx_for(LIVE)
     pg.goto(LIVE + 'admin/'); pg.fill('#admin-pass', PRIV['password']); pg.click('#login-btn'); pg.wait_for_selector('li[data-slug=kraken] [data-act=delete]')
     pg.on('dialog', lambda d: d.accept()); pg.click('li[data-slug=kraken] [data-act=delete]')
-    pg.wait_for_selector('li[data-slug=kraken] .adm-chip:has-text("Delete requested")')
+    pg.wait_for_selector('li[data-slug=kraken] .adm-chip:has-text("Removed")')
     assert pg.locator('li[data-slug=kraken] button').count() == 0
     pg.screenshot(path='preview-admin-pending.png')
     c.close()
