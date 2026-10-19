@@ -2,7 +2,7 @@
 on <html>, and cache-bust assets (?v=N). Idempotent. Usage: python3 tools/inject_gate.py [version]"""
 import re, sys, glob, os
 R = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-V = sys.argv[1] if len(sys.argv) > 1 else '2'
+V = sys.argv[1] if len(sys.argv) > 1 else '3'
 SVG = ('<svg viewBox="0 0 64 64" width="46" height="46" aria-hidden="true"><defs><linearGradient id="whog" x1="0" y1="0" x2="1" y2="1">'
        '<stop offset="0" stop-color="#f5c46b"/><stop offset="1" stop-color="#c98a2e"/></linearGradient></defs>'
        '<rect width="64" height="64" rx="16" fill="#14151b"/><path d="M18 14v36M46 14v36M18 32h28" stroke="url(#whog)" stroke-width="7" stroke-linecap="round" fill="none"/></svg>')
@@ -19,7 +19,7 @@ def gate(project):
       '<div class="who-choices" id="who-choices" role="group" aria-label="Choose who you are">'
       + choice('Hush', 'Studio &middot; admin', True) + choice('Julius', roles[0]) + choice('Adam', roles[1]) +
       '</div><form class="who-hush" id="who-hush" hidden novalidate><input type="text" name="username" autocomplete="username" value="Hush" hidden>'
-      '<label for="who-pass">Password for Hush</label><input type="password" id="who-pass" name="password" autocomplete="current-password" maxlength="200" aria-describedby="who-error">'
+      '<label for="who-pass" id="who-pass-label">Password for Hush</label><input type="password" id="who-pass" name="password" autocomplete="current-password" maxlength="200" aria-describedby="who-error">'
       '<p class="error field-error" id="who-error" role="alert" hidden>Wrong password. Try again.</p>'
       '<div class="who-hush-actions"><button type="button" class="btn btn-secondary" id="who-back">Back</button><button type="submit" class="btn" id="who-signin">Sign in</button></div>'
       '<p class="who-fine">Checked in this browser only. Nothing is sent.</p></form>'

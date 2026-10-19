@@ -1,17 +1,26 @@
 /* Hush Media Creations: "Who are you?" gate (home page + every project page).
    Loaded synchronously in <head> so the page is locked before anything is clickable.
    - Hush + password  -> admin session (same as /admin/), page reloads with the admin bar.
-   - A client name    -> remembered for this tab (sessionStorage "hush-who"). On a project
-                         page project.js then picks AS that person (shared project link).
-   - ?c=<token> links -> the gate only offers the person that token belongs to (+ Hush).
+   - A client name    -> needs that client's password too, then is remembered for this tab
+                         (sessionStorage "hush-who"). On a project page project.js then picks
+                         AS that person (shared project link).
+   - ?c=<token> links -> the gate only offers the person that token belongs to (+ Hush); that
+                         person still enters their password.
    While the gate is open every other element is inert, scrolling is locked, Tab is
    trapped in the card and Escape does nothing. Password is checked in-browser against
-   SHA-256; the plaintext is never published. Change it with: python3 tools/add_admin.py */
+   SHA-256; the plaintext is never published. Change Hush's with: python3 tools/add_admin.py,
+   a client's with: python3 tools/set_client_password.py <Name> */
 (function () {
   'use strict';
   // ==== ADMIN LOGIN (written by tools/add_admin.py) ====
   var ADMIN_LOGIN_HASH = '006db14bf4fb1c35df14bc5ea3a1811017194f6055817c69bb1ccc729fc5522e'; // SHA-256 of "<name>|<password>"
   // =====================================================
+  // ==== CLIENT LOGINS (written by tools/set_client_password.py) ====
+  var CLIENT_LOGIN_HASH = { // SHA-256 of "<name>|<password>"
+    'Julius': 'd1747f0fe458f88539181706839080c16ec6441c7081570e61c172cb05be351e',
+    'Adam': '7f796ab2d56f8f9445e2a8a79e4cb6568ee8c23e1f38e5403068bcfb20984118'
+  };
+  // =================================================================
   var NAME = 'Hush';
   var me = document.currentScript;
   var PAGE = (me && me.getAttribute('data-page')) || 'home';
@@ -24,7 +33,8 @@
   function set(k, v) { try { sessionStorage.setItem(k, v); } catch (e) {} }
 
   function del(k) { try { sessionStorage.removeItem(k); } catch (e) {} }
-  var KEYS = ['hush-who', 'hush-admin', 'hush-admin-key', 'hush-admin-name'];
+  var KEYS = ['hush-who', 'hush-who-auth', 'hush-admin', 'hush-admin-key', 'hush-admin-name'];
+  function hasPw(n) { return Object.prototype.hasOwnProperty.call(CLIENT_LOGIN_HASH, n); }
 
   // ?who=1 (or ?who) -> forget who this tab is (incl. admin) and show the gate again. Param is stripped.
   var qs = new URLSearchParams(location.search);
@@ -35,8 +45,12 @@
   }
 
   var admin = get('hush-admin') === '1' && /^[0-9a-f]{64}$/.test(get('hush-admin-key'));
+  // A client only counts as signed in once their password was checked in this tab (older tabs that
+  // picked a name before passwords existed are asked again). 'Guest' = project without a clients list.
+  var stored = get('hush-who');
+  if (stored && !(stored === 'Guest' || (hasPw(stored) && get('hush-who-auth') === CLIENT_LOGIN_HASH[stored]))) { stored = ''; del('hush-who'); del('hush-who-auth'); }
   window.HushWho = {
-    name: admin ? NAME : get('hush-who'),
+    name: admin ? NAME : stored,
     reset: function () { KEYS.forEach(del); location.reload(); }
   };
   function onReady(fn) { if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fn); else fn(); }
@@ -59,7 +73,6 @@
     document.body.appendChild(b);
   }
   if (admin) { release(); return; }        // Hush already signed in: no gate anywhere
-  var stored = get('hush-who');
   html.classList.add('who-lock');           // (already in the HTML; belt and braces)
   if (PAGE === 'home' && (stored === 'Julius' || stored === 'Adam')) { release(); return; }
 
@@ -130,7 +143,8 @@
       c0.appendChild(el('p', { class: 'who-lead', id: 'who-lead' }, 'Choose your name to continue.'));
       c0.appendChild(el('div', { class: 'who-choices', id: 'who-choices', role: 'group' }));
       var f0 = el('form', { class: 'who-hush', id: 'who-hush', hidden: 'hidden', novalidate: '' });
-      f0.appendChild(el('label', { for: 'who-pass' }, 'Password for Hush'));
+      f0.appendChild(el('input', { type: 'text', name: 'username', autocomplete: 'username', value: NAME, hidden: 'hidden' }));
+      f0.appendChild(el('label', { for: 'who-pass', id: 'who-pass-label' }, 'Password for Hush'));
       f0.appendChild(el('input', { type: 'password', id: 'who-pass', autocomplete: 'current-password', maxlength: '200' }));
       f0.appendChild(el('p', { class: 'error field-error', id: 'who-error', role: 'alert', hidden: 'hidden' }, 'Wrong password. Try again.'));
       var r0 = el('div', { class: 'who-hush-actions' });
@@ -159,6 +173,9 @@
     var err = document.getElementById('who-error');
     var back = document.getElementById('who-back');
     var go = document.getElementById('who-signin');
+    var label = document.getElementById('who-pass-label') || hushPane.querySelector('label');
+    var user = hushPane.querySelector('input[name=username]');
+    var current = NAME;                   // whose password the pane is asking for
     card.focus();
 
     function focusables() { return Array.prototype.filter.call(card.querySelectorAll('button,input:not([hidden]),[tabindex="0"]'), function (n) { return !n.disabled && n.offsetParent !== null; }); }
@@ -173,8 +190,8 @@
     }, true);
     document.addEventListener('focusin', function (ev) { if (document.getElementById('who-overlay') && !card.contains(ev.target)) (focusables()[0] || card).focus(); });
 
-    function unlock(who) {
-      set('hush-who', who); window.HushWho.name = who;
+    function unlock(who, auth) {
+      set('hush-who', who); if (auth) set('hush-who-auth', auth); window.HushWho.name = who;
       if (PAGE === 'project') { location.reload(); return; }   // project.js picks as this person
       overlay.classList.remove('in'); overlay.classList.add('out');
       setTimeout(function () {
@@ -183,13 +200,26 @@
         switchPill();
       }, 220);
     }
-    function showHush() { choices.hidden = true; hushPane.hidden = false; pass.value = ''; err.hidden = true; pass.focus(); }
-    function showChoices() { hushPane.hidden = true; choices.hidden = false; var b = choices.querySelector('.is-hush'); if (b) b.focus(); }
+    function showPass(who) {
+      current = who; hushPane.setAttribute('data-for', who);
+      if (label) label.textContent = 'Password for ' + who;
+      if (user) user.value = who;
+      choices.hidden = true; hushPane.hidden = false; pass.value = ''; err.hidden = true; pass.removeAttribute('aria-invalid'); go.disabled = false; pass.focus();
+    }
+    function showChoices() { hushPane.hidden = true; choices.hidden = false; var b = choices.querySelector('[data-who="' + current + '"]') || choices.querySelector('.is-hush'); if (b) b.focus(); }
+    function wrong() {
+      setTimeout(function () {
+        go.disabled = false; err.hidden = false; pass.value = ''; pass.setAttribute('aria-invalid', 'true');
+        card.classList.remove('shake'); void card.offsetWidth; card.classList.add('shake'); pass.focus();
+      }, 600);
+    }
 
     choices.addEventListener('click', function (ev) {
       var b = ev.target.closest('[data-who]'); if (!b) return;
       var who = b.getAttribute('data-who');
-      if (who === NAME) showHush(); else unlock(who);
+      if (who === NAME || hasPw(who)) showPass(who);
+      else if (who === 'Guest' && !hasPw('Guest')) unlock(who);   // project without a clients list
+      else { current = who; showPass(who); }                     // no password set yet -> can't sign in
     });
     back.addEventListener('click', showChoices);
     pass.addEventListener('input', function () { err.hidden = true; pass.removeAttribute('aria-invalid'); });
@@ -198,14 +228,13 @@
       var pw = pass.value;
       if (!pw || !(window.crypto && crypto.subtle)) { err.hidden = false; return; }
       go.disabled = true;
-      sha(NAME + '|' + pw).then(function (h) {
-        if (h !== ADMIN_LOGIN_HASH) {
-          setTimeout(function () {
-            go.disabled = false; err.hidden = false; pass.value = ''; pass.setAttribute('aria-invalid', 'true');
-            card.classList.remove('shake'); void card.offsetWidth; card.classList.add('shake'); pass.focus();
-          }, 600);
+      var who = current;
+      sha(who + '|' + pw).then(function (h) {
+        if (who !== NAME) {
+          if (hasPw(who) && h === CLIENT_LOGIN_HASH[who]) unlock(who, h); else wrong();
           return;
         }
+        if (h !== ADMIN_LOGIN_HASH) { wrong(); return; }
         return sha('hush-admin-sign|' + NAME + '|' + pw).then(function (k) {
           set('hush-admin', '1'); set('hush-admin-name', NAME); set('hush-admin-key', k); set('hush-who', NAME);
           location.reload();
