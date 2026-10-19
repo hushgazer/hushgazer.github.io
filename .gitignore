@@ -12,3 +12,10 @@ Thumbs.db
 .vscode/
 .idea/
 node_modules/
+# Private client links (raw tokens) - NEVER commit or publish
+tools/private/
+# Local-only preview projects (real client collages) - never committed
+preview-projects/
+# Picks-watcher state (which picks emails were already handled) - local only
+processed-picks.json
+**/processed-picks.json

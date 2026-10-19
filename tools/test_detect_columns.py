@@ -61,4 +61,10 @@ p2, g2, _ = make("uneven-9-dividers", widths=[120, 140, 110, 300, 150, 90, 260, 
 res.append(check(p2, 9, g2))
 # 3) wrong N (asks for 9 columns on the 7-character image) -> must NOT pretend; falls back to equal split
 res.append(check(p, 9, [], expect_conf=False))
+# 4) cropTop suggestion: demo collage has a header strip; generated test collages do not
+ct_demo = dc.suggest_crop_top(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "projects/demo/collage-1.png"))
+ct_none = dc.suggest_crop_top(p)
+ok = 60 <= ct_demo <= 200 and ct_none == 0
+print(f"cropTop suggestion: demo={ct_demo} (expect 60-200), uneven-7={ct_none} (expect 0) => {'PASS' if ok else 'FAIL'}")
+res.append(ok)
 print("ALL PASS" if all(res) else "SOME FAILED"); sys.exit(0 if all(res) else 1)

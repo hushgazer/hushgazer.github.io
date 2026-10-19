@@ -1,0 +1,199 @@
+{
+  "title": "Lion",
+  "description": "Tap your favourite character in each collage.",
+  "collages": [
+    {
+      "file": "collage-1.png",
+      "options": 7,
+      "label": "Collage 1",
+      "columns": [
+        0,
+        203,
+        475,
+        741,
+        1103,
+        1432,
+        1672,
+        2172
+      ]
+    },
+    {
+      "file": "collage-2.png",
+      "options": 7,
+      "label": "Collage 2",
+      "columns": [
+        0,
+        220,
+        500,
+        788,
+        1039,
+        1354,
+        1658,
+        2172
+      ]
+    },
+    {
+      "file": "collage-3.png",
+      "options": 7,
+      "label": "Collage 3",
+      "columns": [
+        0,
+        275,
+        489,
+        787,
+        1095,
+        1402,
+        1691,
+        2172
+      ]
+    },
+    {
+      "file": "collage-4.png",
+      "options": 7,
+      "label": "Collage 4",
+      "columns": [
+        0,
+        176,
+        486,
+        793,
+        1035,
+        1435,
+        1680,
+        2172
+      ]
+    },
+    {
+      "file": "collage-5.png",
+      "options": 7,
+      "label": "Collage 5",
+      "columns": [
+        0,
+        215,
+        499,
+        800,
+        1138,
+        1434,
+        1750,
+        2172
+      ]
+    },
+    {
+      "file": "collage-6.png",
+      "options": 7,
+      "label": "Collage 6",
+      "columns": [
+        0,
+        184,
+        465,
+        664,
+        984,
+        1322,
+        1742,
+        2172
+      ]
+    },
+    {
+      "file": "collage-7.png",
+      "options": 7,
+      "label": "Collage 7",
+      "columns": [
+        0,
+        167,
+        440,
+        818,
+        1067,
+        1377,
+        1786,
+        2172
+      ]
+    },
+    {
+      "file": "collage-8.png",
+      "options": 7,
+      "label": "Collage 8",
+      "columns": [
+        0,
+        193,
+        437,
+        752,
+        1001,
+        1348,
+        1677,
+        2168
+      ]
+    },
+    {
+      "file": "collage-9.png",
+      "options": 7,
+      "label": "Collage 9",
+      "columns": [
+        0,
+        194,
+        403,
+        719,
+        1016,
+        1315,
+        1696,
+        2172
+      ]
+    },
+    {
+      "file": "collage-10.png",
+      "options": 7,
+      "label": "Collage 10",
+      "columns": [
+        0,
+        203,
+        516,
+        709,
+        968,
+        1372,
+        1646,
+        2172
+      ]
+    },
+    {
+      "file": "collage-11.png",
+      "options": 7,
+      "label": "Collage 11",
+      "columns": [
+        0,
+        176,
+        453,
+        740,
+        1041,
+        1348,
+        1679,
+        2172
+      ]
+    },
+    {
+      "file": "collage-12.png",
+      "options": 7,
+      "label": "Collage 12",
+      "columns": [
+        0,
+        169,
+        418,
+        689,
+        983,
+        1317,
+        1654,
+        2172
+      ]
+    }
+  ],
+  "imageBot": "12d51f4d-848b-4f40-b43d-204baade127c",
+  "clients": [
+    {
+      "name": "Julius",
+      "keyHash": "836821071ccf70ccf21e342bba9beaae366707cccbe541958bb913caf1829b95",
+      "role": "decider"
+    },
+    {
+      "name": "Adam",
+      "keyHash": "595e1c1e82f0782e4107dc7dd7f006f200db6cbb5fbf429050140fa286316bb9",
+      "role": "advisor"
+    }
+  ]
+}

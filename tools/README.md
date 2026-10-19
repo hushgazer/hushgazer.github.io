@@ -1,0 +1,98 @@
+# Hush Media Creations · client picks site — tools & workflow
+
+Static site for GitHub Pages (https://hushgazer.github.io/). No backend, no login,
+no passwords, no trackers, no external scripts. Picks are emailed through FormSubmit.
+
+## 1. Add a project (only when Hush says the collages are FINAL)
+
+1. Get the exact full-quality file paths + character count per collage from the image bot.
+2. Copy the files unchanged into `projects/<slug>/` (e.g. `collage-1.png` …) and write
+   `projects/<slug>/project.json`:
+   ```json
+   {"title": "Kraken", "description": "…",
+    "collages": [{"file": "collage-1.png", "options": 7, "label": "Collage 1"}]}
+   ```
+3. `python3 tools/new_project.py <slug> "Title" --desc "…" --detect --image-bot <agent-id>`
+   * creates `/<slug>/index.html`, lists the project on the home page
+     (`"hidden": true` in `projects/projects.json` keeps it off the home page, e.g. `demo`)
+   * `--detect` runs `tools/detect_columns.py` on every collage and saves `"columns"`
+     (N+1 pixel cut positions). For transparent PNGs it anchors on the printed option
+     numbers; collages whose numbers can't all be found use the project's median layout
+     (reported as LOW CONFIDENCE). Always look at the overlays in
+     `tools/out/<slug>-<collage>-columns.png` before publishing.
+   * also sets `"cropTop"` when a header text strip is found (trimmed in crops/lineup)
+   * `--image-bot` saves `"imageBot"` so picks go back to the bot that made the project
+4. Give each client a personal link (no passwords):
+   `python3 tools/add_client.py <slug> Julius --role decider`
+   `python3 tools/add_client.py <slug> Adam --role advisor`
+   * token like `julius-k7Qm2xP9aB3c`; only its SHA-256 (`keyHash`) goes into project.json
+   * raw tokens + links are saved in `tools/private/client-links.json` (git-ignored, mode 600);
+     re-running prints the saved link, `--rotate` replaces it
+   * link: `https://hushgazer.github.io/<slug>/?c=<token>`
+   * no/bad token → polite "needs your personal link" message, collages view-only
+   * no `"clients"` array → fallback: required "Your name" field
+5. Run the checks (section 5), commit, push.
+
+## 2. Roles: decider + advisor
+
+* **advisor** (e.g. Adam): picks + optional note per collage + overall opinion.
+* After an advisor submits, publish their opinion for the decider:
+  `python3 tools/publish_opinion.py <payload.json>` (alias: `add_opinion.py`).
+  It checks the payload's `clientTag` belongs to an advisor, refuses `test:true`
+  payloads, and writes `"opinions"` into project.json. Commit + push.
+  Remove: `python3 tools/publish_opinion.py --project <slug> --remove Adam`.
+* **decider** (e.g. Julius) sees a small "Adam's pick" tag on the character and an
+  "Adam's opinion" section below the last collage (above the submit area).
+* Note: project.json is public, so a published opinion is readable by anyone who has
+  the project URL (same as the collages).
+
+## 3. Client page features
+
+* Tap a character to pick it (one per collage); picks are saved in the browser per
+  project **and** per client, so two clients on one device never mix.
+* **Final lineup**: the picked characters side by side, cut from the full-quality
+  collages at native resolution (no downscaling); "C1 #5" labels, "not picked yet"
+  slots; **Download lineup** saves a full-resolution PNG locally (`canvas.toBlob`,
+  nothing uploaded).
+* Subject: `Hush picks: <Title> - <Client> #<clientTag> (<slug>)`.
+
+## 4. Test mode (Hush only) and the picks-watcher
+
+* Add `?test=1` to any project URL (works with `?c=`): orange banner
+  "TEST MODE · submissions are marked as tests", **Clear my picks** and **Exit test mode**
+  links. Remembered for that browser tab (sessionStorage); `?test=0` turns it off.
+  Clients never see any of this without the parameter.
+* Test submissions: subject starts with `[TEST] `, payload has `"test": true`,
+  email body has `test: yes`, and **no `_cc` copy** is sent.
+* **Instant alerts**: every REAL submission goes to the FormSubmit inbox
+  (hushgazer@gmail.com) **and** is copied via FormSubmit `_cc` to
+  `hushmediacreations+picks@mail.grokbot.com` (Hush Media Creations' bot inbox) so the
+  picks are noticed instantly. Change `FORM_CC` in `assets/project.js` to update it.
+* **Picks-watcher** (routine): reads new "Hush picks:" emails, extracts the JSON between
+  `HUSHPICKS_JSON_BEGIN` and `HUSHPICKS_JSON_END`, and
+  * **skips** any email whose subject contains `[TEST]` or whose payload has `test: true`
+  * skips already-handled ones (state in `processed-picks.json`, git-ignored)
+  * for an advisor payload: `publish_opinion.py` (after Hush OKs publishing)
+  * for a decider/client payload: builds the picks sheet + marked copies and sends them
+    with the file paths and option numbers to the project's `imageBot`, then tells Hush.
+
+## 5. Picks sheet and marked copies
+
+`python3 tools/make_picks_sheet.py payload.json [-o out.png] [--project-dir DIR]`
+* sheet: each chosen character cropped 1:1 from the ORIGINAL collage, labelled
+  "Collage X - option Y" (transparent collages are shown on white)
+* marked copies: `<out>-marked/<collage>-pick<N>.png` — the full-size original with the
+  chosen character outlined + "PICK #N" (lossless PNG, same size, source untouched)
+* prints `imageBot: <id>` when project.json has one
+
+## 6. Checks before publishing
+
+```
+python3 -m http.server 8765 &          # from the site root
+python3 tools/shoot.py                 # Playwright: picking, submit (FormSubmit MOCKED), test mode,
+                                       # personal links, advisor/decider, lineup, CSP errors
+python3 tools/test_detect_columns.py   # column detection self-test
+java -jar vnu.jar --also-check-css index.html project.html 404.html */index.html assets/style.css
+```
+Tests never send real submissions: FormSubmit is mocked and all other internet requests
+are blocked. Never commit `tools/private/`, `preview-projects/`, `processed-picks.json`.

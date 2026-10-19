@@ -7,6 +7,10 @@ Usage:
   options: --debug PATH (overlay PNG; default tools/out/<slug>-<name>-columns.png)
            --no-debug, --force (keep detected cuts even if confidence is low), --json
 
+Also suggests "cropTop" (px) when a header text strip runs across the top
+(printed as a hint; add it to the collage in project.json to trim the strip in
+the Final lineup / picks crops).
+
 How it works (read-only on the image; the original file is never modified):
   1. Background colour = median of a thin band around the image border.
   2. Foreground = pixels whose colour differs clearly from the background.
@@ -16,6 +20,11 @@ How it works (read-only on the image; the original file is never modified):
      of empty gaps, lean slightly towards the equal-split positions, and require
      every column to hold enough foreground to be a character (no empty columns).
      Cuts inside a gap snap to a thin divider line if there is one.
+  For TRANSPARENT collages (RGBA, the usual bot output) it first looks for the
+  printed option numbers (small separate blobs, one per character, in a row or
+  all dark): cuts go at the emptiest column between neighbouring numbers. If the
+  numbers can't all be found, new_project.py --detect passes a template from the
+  project's other collages (flagged low confidence: check the overlay).
   5. Confidence: every cut must sit in a clear valley and every column must hold
      a character. Otherwise it falls back to an equal split and says so.
 Output: "columns" = N+1 pixel positions in the original image (0 ... width).
@@ -64,12 +73,85 @@ def density_profile(img):
     return prof, s, raw, lines
 
 
-def detect(path, n, force=False):
+def has_alpha(img):
+    return img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info)
+
+
+def label_candidates(img):
+    """Small isolated opaque blobs that look like the printed option numbers
+    (transparent-background collages only)."""
+    W, H = img.size
+    a = np.asarray(img.convert("RGBA"), dtype=np.int16)
+    lab, _ = ndimage.label(a[..., 3] > 128)
+    out = []
+    for i, sl in enumerate(ndimage.find_objects(lab)):
+        y0, y1, x0, x1 = sl[0].start, sl[0].stop, sl[1].start, sl[1].stop
+        h, w = y1 - y0, x1 - x0
+        if not (0.02 * H <= h <= 0.16 * H and w <= 1.3 * h): continue
+        m = lab[sl] == i + 1
+        if not (0.15 <= m.mean() <= 0.9): continue
+        rgb = a[sl][..., :3][m]
+        out.append({"x": (x0 + x1) / 2, "y": (y0 + y1) / 2, "h": h, "dark": float((rgb.max(axis=1) < 90).mean())})
+    return sorted(out, key=lambda d: d["x"])
+
+
+def label_centers(img, n):
+    """x centres of the N printed option numbers, or None. Tries: all dark blobs,
+    then one horizontal row of same-size blobs (any colour / dark only)."""
+    if not has_alpha(img): return None, []
+    W, H = img.size
+    c = label_candidates(img)
+    def ok(sel):
+        if len(sel) != n: return False
+        hs = [d["h"] for d in sel]
+        return max(hs) <= 1.45 * min(hs) and min(np.diff([d["x"] for d in sel])) > 0.03 * W
+    dk = [d for d in c if d["dark"] >= 0.45]
+    if ok(dk): return [d["x"] for d in dk], c
+    for d0 in sorted(c, key=lambda d: -d["y"]):
+        row = [d for d in c if abs(d["y"] - d0["y"]) < 0.03 * H and abs(d["h"] - d0["h"]) < 0.3 * d0["h"]]
+        if ok(row): return [d["x"] for d in row], c
+        rd = [d for d in row if d["dark"] >= 0.45]
+        if ok(rd): return [d["x"] for d in rd], c
+    return None, c
+
+
+def cuts_between(img, centers):
+    """Cut between neighbouring character centres at the emptiest column (alpha density)."""
+    W, H = img.size
+    a = np.asarray(img.convert("RGBA"))[..., 3].astype(np.float32) / 255
+    prof = ndimage.uniform_filter1d(a.mean(axis=0), size=max(3, W // 300))
+    cuts = []
+    for c0, c1 in zip(centers[:-1], centers[1:]):
+        d = c1 - c0; lo, hi = int(c0 + 0.25 * d), int(c1 - 0.25 * d)
+        cuts.append(int(lo + np.argmin(prof[lo:hi + 1])) if hi > lo else int((c0 + c1) / 2))
+    return [0] + cuts + [W], prof
+
+
+def detect(path, n, force=False, template=None):
     img = Image.open(path)
     W, H = img.size
     equal = [round(i * W / n) for i in range(n + 1)]
     if n < 2:
         return {"columns": [0, W], "confident": True, "method": "single", "reasons": [], "equal": equal, "W": W, "H": H}
+    # 1) Transparent collage with printed option numbers: anchor on the numbers.
+    if has_alpha(img):
+        centers, cands = label_centers(img, n)
+        method = "number labels"
+        if centers is None and template and len(template) == n:
+            # 2) Same-project template (median centres of collages whose numbers were
+            #    found), snapped to any number-like blob close to each expected centre.
+            centers, found = [], 0
+            for t in template:
+                near = [d for d in cands if abs(d["x"] - t * W) < 0.035 * W]
+                if near: found += 1; centers.append(min(near, key=lambda d: abs(d["x"] - t * W))["x"])
+                else: centers.append(t * W)
+            method = f"project template ({found}/{n} numbers found)"
+        if centers is not None:
+            cols, prof = cuts_between(img, centers)
+            conf = method == "number labels"
+            reasons = [] if conf else [f"only {method}: estimated from the other collages, check the overlay"]
+            return {"columns": cols, "detected": cols, "confident": conf, "method": method, "reasons": reasons,
+                    "equal": equal, "W": W, "H": H, "centers": [int(round(c)) for c in centers], "_prof": prof, "_s": 1.0}
     prof, s, raw, lines = density_profile(img)
     w = len(prof)
     peak = float(np.percentile(prof, 95)) or 1.0
@@ -144,7 +226,11 @@ def detect(path, n, force=False):
 
 
 def overlay(path, res, out, max_w=2000):
-    img = Image.open(path).convert("RGB")
+    src = Image.open(path)
+    if has_alpha(src):
+        img = Image.new("RGB", src.size, (255, 255, 255)); img.paste(src.convert("RGBA"), mask=src.convert("RGBA").split()[3])
+    else:
+        img = src.convert("RGB")
     W, H = img.size
     s = min(1.0, max_w / W)
     im = img.resize((round(W * s), round(H * s)), Image.BILINEAR) if s < 1 else img.copy()
@@ -162,7 +248,9 @@ def overlay(path, res, out, max_w=2000):
         X = int(x * s)
         for y in range(0, h, 18):
             dr.line([(X, y), (X, y + 8)], fill=(150, 150, 150), width=1)
-    col = (60, 242, 166) if res["method"] == "detected" else (255, 138, 101)
+    col = (20, 200, 120) if res["method"] in ("detected", "number labels") else (255, 120, 60)
+    for cx in res.get("centers", []):
+        X = int(cx * s); dr.ellipse([X - 7, h - 22, X + 7, h - 8], fill=(255, 0, 170))
     f = _font(max(18, h // 14)); fs = _font(16)
     cols = res["columns"]
     for x in cols[1:-1]:
@@ -197,8 +285,36 @@ def write_project(path, n, columns):
     return pj
 
 
-def run(path, n, write=False, debug=None, force=False, quiet=False):
-    res = detect(path, n, force=force)
+def suggest_crop_top(path):
+    """Suggest a "cropTop" (px) that trims a header text strip across the top:
+    a band of foreground in the top ~15% of the image, separated from the
+    characters below by a clear empty band. Returns 0 when there is no such strip
+    (e.g. a character's head reaches the top). Advisory only; never writes."""
+    img = Image.open(path); W, H = img.size
+    s = min(1.0, MAX_W / W)
+    a = np.asarray(img.convert("RGB").resize((max(1, round(W * s)), max(1, round(H * s))), Image.BILINEAR) if s < 1 else img.convert("RGB"), dtype=np.float32)
+    h, w, _ = a.shape
+    b = max(2, int(0.015 * min(h, w)))
+    border = np.concatenate([a[:b].reshape(-1, 3), a[-b:].reshape(-1, 3), a[:, :b].reshape(-1, 3), a[:, -b:].reshape(-1, 3)])
+    bg = np.median(border, axis=0)
+    fg = np.sqrt(((a - bg) ** 2).sum(axis=2)) > 40
+    fg = ndimage.binary_opening(fg, structure=np.ones((1, 3)), iterations=1)   # drop 1-2px vertical lines
+    rows = fg.mean(axis=1) > 0.002
+    top = int(0.15 * h); gap_min = max(2, int(0.012 * h))
+    y = 0
+    while y < top and not rows[y]: y += 1
+    if y >= top: return 0
+    while y < top and rows[y]: y += 1           # end of the header band
+    if y >= top: return 0
+    g0 = y
+    while y < h and not rows[y]: y += 1         # empty gap below it
+    if y - g0 < gap_min or y >= h * 0.5: return 0
+    return int(round(((g0 + y) / 2) / s))
+
+
+def run(path, n, write=False, debug=None, force=False, quiet=False, template=None):
+    res = detect(path, n, force=force, template=template)
+    res["cropTopSuggested"] = suggest_crop_top(path)
     slug = os.path.basename(os.path.dirname(os.path.abspath(path)))
     if debug is None:
         debug = os.path.join(HERE, "out", f"{slug}-{os.path.splitext(os.path.basename(path))[0]}-columns.png")
@@ -213,6 +329,8 @@ def run(path, n, write=False, debug=None, force=False, quiet=False):
             print("  why:", "; ".join(res["reasons"]))
             if res["method"] != "detected":
                 print("  detected (not used):", json.dumps(res["detected"]), " — re-run with --force to keep them")
+        if res["cropTopSuggested"]:
+            print(f"  header strip found: suggest \"cropTop\": {res['cropTopSuggested']} (trims it from the Final lineup)")
         if debug: print("  debug overlay:", res["debug"])
         if write: print("  wrote columns to", res["project_json"])
     return res

@@ -3,7 +3,10 @@
   "project": "demo",
   "projectTitle": "Demo Project (Sample)",
   "clientName": "Test Client",
-  "submittedAt": "2026-10-19T13:33:17.163Z",
+  "clientTag": null,
+  "clientRole": null,
+  "test": false,
+  "submittedAt": "2026-10-19T13:58:10.653Z",
   "picks": [
     {
       "collage": 1,
@@ -16,9 +19,9 @@
       },
       "crop": {
         "x": 1600,
-        "y": 0,
+        "y": 116,
         "w": 400,
-        "h": 800
+        "h": 684
       }
     },
     {
@@ -32,9 +35,9 @@
       },
       "crop": {
         "x": 456,
-        "y": 0,
+        "y": 116,
         "w": 458,
-        "h": 800
+        "h": 684
       }
     },
     {
@@ -48,9 +51,9 @@
       },
       "crop": {
         "x": 2800,
-        "y": 0,
+        "y": 116,
         "w": 400,
-        "h": 800
+        "h": 684
       }
     }
   ],

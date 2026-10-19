@@ -71,3 +71,51 @@ body.home{padding-bottom:0}
 .btn.btn-secondary{background:#2c2e3a;color:#ecebf2}
 .hp{position:absolute;left:-10000px;width:1px;height:1px;overflow:hidden}
 .notfound{max-width:60ch}
+/* client name field */
+.field{display:grid;gap:4px}
+.field label{display:block}
+.req{color:var(--gold);font-size:.8rem}
+.field-error{font-size:.85rem;margin:0}
+input[aria-invalid="true"]{border-color:var(--warn)}
+/* test mode (only with ?test=1; never shown to clients) */
+.test-banner{position:sticky;top:0;z-index:30;background:#ff8c1a;color:#1a0d00;font-weight:700;font-size:.92rem}
+.test-banner .wrap{display:flex;flex-wrap:wrap;align-items:center;gap:8px 18px;padding-top:8px;padding-bottom:8px}
+.test-banner strong{letter-spacing:.06em;text-transform:uppercase}
+.test-banner a,.test-banner button{color:#1a0d00;font:inherit;font-weight:700;background:none;border:0;padding:0;text-decoration:underline;cursor:pointer}
+.test-banner .tb-actions{margin-left:auto;display:flex;gap:16px}
+/* personal client links */
+.client-badge{display:inline-flex;align-items:center;gap:8px;margin:0 0 16px;padding:6px 14px;border-radius:999px;background:#0f1f19;border:1px solid var(--pick);color:var(--pick);font-weight:700;font-size:.95rem}
+.gate{background:var(--panel);border:1px solid var(--gold2);border-radius:var(--r);padding:16px 18px;margin-bottom:24px}
+.gate h2{margin:0 0 6px;font-size:1.15rem;color:var(--gold)}
+.gate p{margin:0;color:var(--muted)}
+.gate code{color:var(--text)}
+.locked .opt{cursor:default;pointer-events:none}
+.locked .summary,.locked-bar{display:none}
+[hidden]{display:none!important}
+/* advisor opinions (shown to the decider) */
+.op-tag{position:absolute;left:50%;bottom:8px;transform:translateX(-50%);background:rgba(14,15,19,.82);color:var(--gold);border:1px solid var(--gold2);font-size:clamp(.6rem,1vw,.75rem);font-weight:700;line-height:1;padding:4px 7px;border-radius:999px;white-space:nowrap;pointer-events:none}
+.opinion{background:var(--panel);border:1px solid var(--gold2);border-radius:var(--r);padding:18px;margin:0 0 26px}
+.opinion h2{margin:0 0 8px;font-size:1.2rem;color:var(--gold)}
+.op-overall{margin:0 0 14px;white-space:pre-line}
+.op-list{list-style:none;padding:0;margin:0;display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}
+.op-list li{display:flex;gap:10px;align-items:flex-start;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px}
+.op-thumb{flex:0 0 auto}
+.op-thumb canvas,.op-thumb .ph{display:flex;align-items:center;justify-content:center;width:72px;height:110px;object-fit:contain;border-radius:6px;background:#0b0c10;color:var(--muted)}
+.op-text{font-size:.9rem;min-width:0}
+.op-text p{margin:4px 0 0;color:var(--muted);white-space:pre-line;overflow-wrap:anywhere}
+.note-field{margin-top:10px;max-width:640px}
+textarea{resize:vertical}
+/* final lineup */
+.lineup{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:18px;margin:0 0 26px}
+.lineup-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.lineup-head h2{margin:0;font-size:1.2rem}
+.lineup-head .btn{padding:9px 18px;font-size:.9rem}
+.lineup-strip{display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding:12px 2px 4px;background:#0b0c10;border-radius:10px;margin-top:10px}
+.slot{flex:0 0 auto;margin:0;display:flex;flex-direction:column;align-items:center;gap:4px}
+.slot canvas{display:block;height:clamp(180px,32vw,340px);width:auto;max-width:none}
+.slot-ph{display:flex;align-items:center;justify-content:center;text-align:center;height:clamp(180px,32vw,340px);width:clamp(70px,10vw,120px);border:2px dashed var(--warn);border-radius:8px;color:var(--warn);font-size:.8rem;padding:6px}
+.slot figcaption{font-size:.8rem;font-weight:700;color:var(--muted)}
+.slot:not(.empty) figcaption{color:var(--pick)}
+/* transparent (RGBA) collages: show them on white, like the image bots render them */
+.frame,.picks canvas,.bar-thumbs canvas,.op-thumb canvas,.slot canvas,.confirm canvas{background:#fff}
+@media (max-width:700px){.test-banner{font-size:.78rem}.test-banner .tb-actions{margin-left:0}}

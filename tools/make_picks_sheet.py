@@ -94,7 +94,11 @@ def main():
     d.text((pad, 20), f"{data.get('projectTitle', slug)} — client picks" + (f" ({data['clientName']})" if data.get("clientName") else ""), font=font(36), fill=(242, 192, 99))
     x = pad
     for (t, label), cw in zip(tiles, cols):
-        sheet.paste(t, (x + (cw - t.width) // 2, 70 + pad))  # pasted 1:1, no resampling
+        px = (x + (cw - t.width) // 2, 70 + pad)
+        if t.mode in ("RGBA", "LA", "P"):                       # transparent collage: on white, 1:1
+            t = t.convert("RGBA"); sheet.paste((255, 255, 255), (*px, px[0] + t.width, px[1] + t.height)); sheet.paste(t, px, mask=t.split()[3])
+        else:
+            sheet.paste(t, px)  # pasted 1:1, no resampling
         bb = d.textbbox((0, 0), label, font=f)
         d.text((x + (cw - (bb[2] - bb[0])) / 2, 70 + pad + t.height + 20), label, font=f, fill=(236, 235, 242))
         x += cw + pad

@@ -1,0 +1,169 @@
+{
+  "title": "Kraken",
+  "description": "Tap your favourite character in each collage.",
+  "collages": [
+    {
+      "file": "collage-1.png",
+      "options": 7,
+      "label": "Collage 1",
+      "columns": [
+        0,
+        183,
+        384,
+        775,
+        1007,
+        1268,
+        1715,
+        2076
+      ]
+    },
+    {
+      "file": "collage-2.png",
+      "options": 7,
+      "label": "Collage 2",
+      "columns": [
+        0,
+        190,
+        320,
+        587,
+        885,
+        1307,
+        1666,
+        2160
+      ]
+    },
+    {
+      "file": "collage-3.png",
+      "options": 7,
+      "label": "Collage 3",
+      "columns": [
+        0,
+        147,
+        340,
+        661,
+        941,
+        1274,
+        1640,
+        2172
+      ]
+    },
+    {
+      "file": "collage-4.png",
+      "options": 7,
+      "label": "Collage 4",
+      "columns": [
+        0,
+        173,
+        355,
+        678,
+        892,
+        1278,
+        1682,
+        2164
+      ]
+    },
+    {
+      "file": "collage-5.png",
+      "options": 7,
+      "label": "Collage 5",
+      "columns": [
+        0,
+        140,
+        347,
+        596,
+        875,
+        1202,
+        1627,
+        2172
+      ]
+    },
+    {
+      "file": "collage-6.png",
+      "options": 7,
+      "label": "Collage 6",
+      "columns": [
+        0,
+        110,
+        316,
+        608,
+        892,
+        1222,
+        1570,
+        2172
+      ]
+    },
+    {
+      "file": "collage-7.png",
+      "options": 7,
+      "label": "Collage 7",
+      "columns": [
+        0,
+        167,
+        391,
+        709,
+        984,
+        1351,
+        1709,
+        2172
+      ]
+    },
+    {
+      "file": "collage-8.png",
+      "options": 7,
+      "label": "Collage 8",
+      "columns": [
+        0,
+        146,
+        436,
+        641,
+        944,
+        1339,
+        1640,
+        2172
+      ]
+    },
+    {
+      "file": "collage-9.png",
+      "options": 7,
+      "label": "Collage 9",
+      "columns": [
+        0,
+        228,
+        448,
+        698,
+        1007,
+        1347,
+        1671,
+        2172
+      ]
+    },
+    {
+      "file": "collage-10.png",
+      "options": 7,
+      "label": "Collage 10",
+      "columns": [
+        0,
+        123,
+        374,
+        647,
+        929,
+        1190,
+        1644,
+        2172
+      ]
+    }
+  ],
+  "imageBot": "cd1b6998-b4b1-4a86-9722-aa3df3bc2d9f",
+  "clients": [
+    {
+      "name": "Julius",
+      "keyHash": "2b9a28fd196224cc517f7d4c774a0adeef2636291ae94e35f350e9bc4bd7d5e4",
+      "role": "decider"
+    },
+    {
+      "name": "Adam",
+      "keyHash": "1caee1a4c6a7c96302714f5a266b71f7b83345300ac5d27861a283f8d67b1de7",
+      "role": "advisor"
+    }
+  ]
+}

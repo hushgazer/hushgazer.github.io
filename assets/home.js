@@ -5,7 +5,7 @@
     .then(function (r) { return r.json(); })
     .then(function (d) {
       ul.textContent = '';
-      (d.projects || []).forEach(function (p) {
+      (d.projects || []).filter(function (p) { return !p.hidden; }).forEach(function (p) {
         var li = document.createElement('li'), a = document.createElement('a');
         a.href = p.slug + '/';
         a.textContent = p.title;

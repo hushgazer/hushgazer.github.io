@@ -3,7 +3,8 @@
 Usage: python3 tools/new_project.py <slug> "Project Title" [--desc "text"] [--detect [--force]]
   --detect  auto-find the cut points between characters in every collage
             (tools/detect_columns.py) and save them as "columns" in project.json;
-            debug overlays go to tools/out/<slug>-<collage>-columns.png
+            debug overlays go to tools/out/<slug>-<collage>-columns.png; also sets
+            "cropTop" when a header text strip is found (trimmed in the Final lineup)
   --image-bot AGENT_ID  save the agent id of the image bot that made the project as the
             optional "imageBot" field in project.json (make_picks_sheet.py prints it so
             client picks can be routed back to that bot)
@@ -27,9 +28,25 @@ json.dump(d, open(pj, 'w'), indent=2); print(f'Created {a.slug}/index.html and u
 if a.detect:
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import detect_columns
+    import numpy as np
     cfg = json.load(open(f'{R}/projects/{a.slug}/project.json'))
-    low = []
+    low = []; later = []; tmpl = {}
     for c in cfg['collages']:
         r = detect_columns.run(f"{R}/projects/{a.slug}/{c['file']}", int(c['options']), write=True, force=a.force)
+        if r.get('method') == 'number labels':
+            tmpl.setdefault(int(c['options']), []).append([x / r['W'] for x in r['centers']])
+        elif not r['confident']: later.append(c)
+    # second pass: collages whose numbers weren't all found use the project's median layout
+    for c in later:
+        rows = tmpl.get(int(c['options']), [])
+        t = [float(v) for v in np.median(np.array(rows), axis=0)] if len(rows) >= 2 else None
+        r = detect_columns.run(f"{R}/projects/{a.slug}/{c['file']}", int(c['options']), write=True, force=a.force or bool(t), template=t)
         if not r['confident']: low.append(c['file'])
+    cfg = json.load(open(f'{R}/projects/{a.slug}/project.json')); tops = {}
+    for c in cfg['collages']:
+        t = detect_columns.suggest_crop_top(f"{R}/projects/{a.slug}/{c['file']}")
+        if t and 'cropTop' not in c: c['cropTop'] = t; tops[c['file']] = t
+    if tops:
+        json.dump(cfg, open(f'{R}/projects/{a.slug}/project.json', 'w'), indent=2)
+        print('Header strip trimmed via cropTop:', tops)
     if low: print('WARNING: low confidence (check the overlays):', ', '.join(low))

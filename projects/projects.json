@@ -3,7 +3,23 @@
     {
       "slug": "demo",
       "title": "Demo Project (Sample)",
-      "description": "Sample collages to preview how picking works."
+      "description": "Sample collages to preview how picking works.",
+      "hidden": true
+    },
+    {
+      "slug": "kraken",
+      "title": "Kraken",
+      "description": "Tap your favourite character in each collage."
+    },
+    {
+      "slug": "lion",
+      "title": "Lion",
+      "description": "Tap your favourite character in each collage."
+    },
+    {
+      "slug": "lion-v3",
+      "title": "Lion v3",
+      "description": "Tap your favourite character in each collage."
     }
   ]
 }
