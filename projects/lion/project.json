@@ -34,21 +34,6 @@
       ]
     },
     {
-      "file": "collage-3.png",
-      "options": 7,
-      "label": "Collage 3",
-      "columns": [
-        0,
-        275,
-        489,
-        787,
-        1095,
-        1402,
-        1691,
-        2172
-      ]
-    },
-    {
       "file": "collage-4.png",
       "options": 7,
       "label": "Collage 4",
@@ -121,21 +106,6 @@
         1348,
         1677,
         2168
-      ]
-    },
-    {
-      "file": "collage-9.png",
-      "options": 7,
-      "label": "Collage 9",
-      "columns": [
-        0,
-        194,
-        403,
-        719,
-        1016,
-        1315,
-        1696,
-        2172
       ]
     },
     {
