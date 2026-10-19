@@ -273,3 +273,21 @@ body:has(.bar) .who-pill{bottom:198px}
 .project-empty{list-style:none;color:var(--muted);padding:8px 2px;font-size:.92rem}
 .adm-chip.adm-finished{color:#9ad7ff;border-color:#5aa9d6}
 .admin-list .project-section{margin-top:18px}
+
+/* Submit celebration overlay (assets/project.js showThanks) — CSP-safe, no external assets */
+.celebrate-overlay{position:fixed;inset:0;z-index:2500;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(8,9,14,.78);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+html.celebrate-lock,html.celebrate-lock body{overflow:hidden;overscroll-behavior:none}
+.celebrate-confetti{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.celebrate-card{position:relative;z-index:1;max-width:740px;width:100%;max-height:min(90vh,880px);overflow:auto;padding:28px 24px 24px;border-radius:18px;background:linear-gradient(165deg,#1a1c26 0%,#12131a 100%);border:1px solid rgba(242,192,99,.45);box-shadow:0 24px 64px rgba(0,0,0,.55),0 0 0 1px rgba(60,242,166,.12);text-align:center}
+.celebrate-emoji{margin:0 0 6px;font-size:1.6rem;letter-spacing:.12em;line-height:1.2}
+.celebrate-card h2{margin:0 0 8px;font-size:clamp(1.45rem,4vw,1.9rem);color:var(--gold);letter-spacing:.01em}
+.celebrate-lead{margin:0 0 18px;color:var(--muted);font-size:1rem;line-height:1.45}
+.celebrate-lineup{margin:0 0 20px;text-align:left}
+.celebrate-lineup.picks{grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px}
+.celebrate-lineup .preview-li{background:var(--panel2);border:1px solid var(--pick)}
+.celebrate-lineup .preview-li.slot-empty{border-style:dashed;border-color:#4a4d5c}
+.celebrate-lineup canvas,.celebrate-lineup .ph{height:130px}
+.celebrate-done{min-width:8rem;font-size:1rem;padding:12px 28px}
+.celebrate-done:focus-visible{outline:2px solid var(--gold);outline-offset:3px}
+@media (max-width:560px){.celebrate-card{padding:22px 14px 18px;border-radius:14px}.celebrate-lineup.picks{grid-template-columns:repeat(auto-fill,minmax(96px,1fr))}.celebrate-lineup canvas,.celebrate-lineup .ph{height:110px}}
+@media (prefers-reduced-motion:reduce){.celebrate-overlay{-webkit-backdrop-filter:none;backdrop-filter:none}.celebrate-confetti{display:none}}

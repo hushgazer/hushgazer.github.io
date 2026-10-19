@@ -878,12 +878,88 @@
     };
   }
 
+  function dismissCelebrate() {
+    var ov = document.getElementById('hush-celebrate');
+    if (ov) ov.remove();
+    document.documentElement.classList.remove('celebrate-lock');
+    if (window._hushCelebrateEsc) {
+      document.removeEventListener('keydown', window._hushCelebrateEsc);
+      window._hushCelebrateEsc = null;
+    }
+  }
+
+  // Lightweight CSP-safe confetti (no CDN). ~2.5s burst, then calm.
+  function burstConfetti(canvas, ms) {
+    if (!canvas || !canvas.getContext) return;
+    var reduce = false;
+    try { reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
+    if (reduce) { canvas.hidden = true; return; }
+    var ctx = canvas.getContext('2d');
+    var W = 0, H = 0, parts = [], start = performance.now(), running = true;
+    var colors = ['#f2c063', '#3cf2a6', '#ff8c1a', '#ecebf2', '#9b7bff', '#ff5d62'];
+    function resize() {
+      W = canvas.width = canvas.clientWidth * (window.devicePixelRatio || 1);
+      H = canvas.height = canvas.clientHeight * (window.devicePixelRatio || 1);
+    }
+    resize();
+    var n = Math.min(140, Math.floor((canvas.clientWidth || 400) / 6));
+    for (var i = 0; i < n; i++) {
+      parts.push({
+        x: Math.random() * W, y: -Math.random() * H * 0.35,
+        w: 6 + Math.random() * 8, h: 8 + Math.random() * 10,
+        vx: (Math.random() - 0.5) * 6, vy: 2 + Math.random() * 7,
+        rot: Math.random() * Math.PI * 2, vr: (Math.random() - 0.5) * 0.25,
+        color: colors[i % colors.length], life: 1
+      });
+    }
+    function frame(t) {
+      if (!running || !canvas.isConnected) return;
+      var elapsed = t - start;
+      ctx.clearRect(0, 0, W, H);
+      var burst = elapsed < (ms || 2500);
+      parts.forEach(function (p) {
+        if (burst) { p.vy += 0.12; p.x += p.vx; p.y += p.vy; p.rot += p.vr; }
+        else { p.vy *= 0.92; p.vx *= 0.92; p.x += p.vx; p.y += p.vy + 0.4; p.life *= 0.97; }
+        if (p.y > H + 40) { if (burst) { p.y = -20; p.x = Math.random() * W; } else return; }
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rot);
+        ctx.globalAlpha = Math.max(0, Math.min(1, p.life));
+        ctx.fillStyle = p.color;
+        ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+        ctx.restore();
+      });
+      if (elapsed < (ms || 2500) + 1200) requestAnimationFrame(frame);
+      else { ctx.clearRect(0, 0, W, H); running = false; }
+    }
+    requestAnimationFrame(frame);
+  }
+
   function showThanks(data) {
-    var box = document.getElementById('confirm');
-    box.hidden = false; box.textContent = '';
-    box.appendChild(el('h3', null, (TEST ? '[TEST] ' : '') + 'Thanks, your picks were sent! \u2728'));
-    box.appendChild(el('p', null, PREVIEW ? 'Test preview: this is what ' + (client ? client.name : 'the client') + ' sees after Submit. Nothing was emailed.' : 'Hush Media Creations will take it from here. Your picks:'));
-    var strip = el('ul', { class: 'picks' });
+    dismissCelebrate();
+    var advisor = isAdvisor() || (data && data.clientRole === 'advisor');
+    var headline = (TEST ? '[TEST] ' : '') + (advisor ? 'Opinion sent! \ud83c\udf89' : 'Pack locked in! \ud83c\udf89');
+    var sub;
+    if (PREVIEW) {
+      headline = (TEST ? '[TEST] ' : '') + (advisor ? 'Opinion preview \u2728' : 'You\'re all set! \u2728');
+      sub = 'Test preview: this is what ' + (client ? client.name : 'the client') + ' sees after Submit. Nothing was emailed.';
+    } else if (advisor) {
+      sub = 'Hush got your opinion \u2014 thanks! \u2728';
+    } else {
+      sub = 'You\'re all set! Hush Media Creations got your picks. \ud83d\udd25';
+    }
+
+    var ov = el('div', {
+      id: 'hush-celebrate', class: 'celebrate-overlay',
+      role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'celebrate-title'
+    });
+    var confetti = el('canvas', { class: 'celebrate-confetti', 'aria-hidden': 'true' });
+    var card = el('div', { class: 'celebrate-card' });
+    card.appendChild(el('p', { class: 'celebrate-emoji', 'aria-hidden': 'true' }, '\ud83c\udf89 \u2728 \ud83d\udd25'));
+    card.appendChild(el('h2', { id: 'celebrate-title' }, headline));
+    card.appendChild(el('p', { class: 'celebrate-lead' }, sub));
+
+    var strip = el('ul', { class: 'celebrate-lineup picks', 'aria-label': 'Your pack lineup' });
     var thanksLine = Array.isArray(data.lineup) && data.lineup.length
       ? data.lineup
       : data.picks.reduce(function (acc, p) {
@@ -896,18 +972,37 @@
       li.appendChild(el('span', { class: 'preview-badge sm', 'aria-hidden': 'true' }, '#' + (idx + 1)));
       if (!e) {
         li.appendChild(el('span', { class: 'ph soft' }, 'New'));
-        li.appendChild(document.createTextNode('#' + (idx + 1) + ' remake'));
+        li.appendChild(document.createTextNode('Remake'));
       } else {
         li.appendChild(cropCanvas(e.collage - 1, e.option, 150));
         li.appendChild(document.createTextNode('#' + (idx + 1)));
       }
       strip.appendChild(li);
     });
-    box.appendChild(strip);
+    card.appendChild(strip);
+
+    var done = el('button', { type: 'button', class: 'btn celebrate-done' }, 'Done');
+    done.addEventListener('click', dismissCelebrate);
+    card.appendChild(done);
+
+    ov.appendChild(confetti);
+    ov.appendChild(card);
+    document.body.appendChild(ov);
+    document.documentElement.classList.add('celebrate-lock');
+    burstConfetti(confetti, 2600);
+    done.focus();
+
+    window._hushCelebrateEsc = function (ev) {
+      if (ev.key === 'Escape') { dismissCelebrate(); }
+    };
+    document.addEventListener('keydown', window._hushCelebrateEsc);
+
+    // Keep #confirm as a quiet fallback (hidden); overlay is the celebration.
+    var box = document.getElementById('confirm');
+    if (box) { box.hidden = true; box.textContent = ''; }
     var btn = document.getElementById('submit');
-    btn.disabled = true; btn.textContent = 'Picks sent';
+    if (btn) { btn.disabled = true; btn.textContent = advisor ? 'Opinion sent' : 'Picks sent'; }
     try { localStorage.removeItem(storeKey); } catch (e) {}
-    box.scrollIntoView({ behavior: 'auto', block: 'start' });
   }
 
   function showError(msg) {
@@ -976,6 +1071,7 @@
     try { localStorage.removeItem(storeKey); localStorage.removeItem(storeKey + ':notes'); } catch (e) {}
     notes = []; document.querySelectorAll('.note-field textarea').forEach(function (t) { t.value = ''; });
     document.getElementById('overall').value = '';
+    dismissCelebrate();
     document.getElementById('confirm').hidden = true;
     document.getElementById('send-error').hidden = true;
     document.getElementById('name-error').hidden = true;
