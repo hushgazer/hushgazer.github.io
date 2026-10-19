@@ -23,14 +23,45 @@
   function get(k) { try { return sessionStorage.getItem(k) || ''; } catch (e) { return ''; } }
   function set(k, v) { try { sessionStorage.setItem(k, v); } catch (e) {} }
 
+  function del(k) { try { sessionStorage.removeItem(k); } catch (e) {} }
+  var KEYS = ['hush-who', 'hush-admin', 'hush-admin-key', 'hush-admin-name'];
+
+  // ?who=1 (or ?who) -> forget who this tab is (incl. admin) and show the gate again. Param is stripped.
+  var qs = new URLSearchParams(location.search);
+  if (qs.has('who')) {
+    KEYS.forEach(del);
+    qs.delete('who');
+    try { history.replaceState(null, '', location.pathname + (qs.toString() ? '?' + qs : '') + location.hash); } catch (e) {}
+  }
+
   var admin = get('hush-admin') === '1' && /^[0-9a-f]{64}$/.test(get('hush-admin-key'));
   window.HushWho = {
     name: admin ? NAME : get('hush-who'),
-    reset: function () { try { sessionStorage.removeItem('hush-who'); } catch (e) {} location.reload(); }
+    reset: function () { KEYS.forEach(del); location.reload(); }
   };
-  if (admin) return;                       // Hush already signed in: no gate anywhere
+  function onReady(fn) { if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fn); else fn(); }
+  // The gate is static markup in every page and <html class="who-lock"> is set in the HTML itself, so the page
+  // is locked even if this script never runs. Removing .who-lock hides the gate (CSS) and frees the page.
+  function release() {
+    html.classList.remove('who-lock');
+    onReady(function () { var o = document.getElementById('who-overlay'); if (o) o.remove(); switchPill(); });
+  }
+  function switchPill() {
+    if (document.getElementById('who-pill') || !window.HushWho.name) return;
+    var b = document.createElement('button');
+    b.type = 'button'; b.id = 'who-pill'; b.className = 'who-pill';
+    b.setAttribute('aria-label', 'Signed in as ' + window.HushWho.name + '. Switch person');
+    var a = document.createElement('span'); a.className = 'who-pill-av'; a.textContent = window.HushWho.name.charAt(0).toUpperCase();
+    var t = document.createElement('span'); t.textContent = window.HushWho.name;
+    var x = document.createElement('span'); x.className = 'who-pill-sw'; x.textContent = 'Not you? Switch';
+    b.appendChild(a); b.appendChild(t); b.appendChild(x);
+    b.addEventListener('click', function () { window.HushWho.reset(); });
+    document.body.appendChild(b);
+  }
+  if (admin) { release(); return; }        // Hush already signed in: no gate anywhere
   var stored = get('hush-who');
-  if (!stored) html.classList.add('who-lock');   // lock immediately (no flash of a clickable page)
+  html.classList.add('who-lock');           // (already in the HTML; belt and braces)
+  if (PAGE === 'home' && (stored === 'Julius' || stored === 'Adam')) { release(); return; }
 
   function el(tag, attrs, text) {
     var e = document.createElement(tag);
@@ -67,10 +98,18 @@
     var names = d.people.map(function (x) { return x.name; });
     var ok = stored && (PAGE === 'home' ? (stored === 'Julius' || stored === 'Adam')
                                         : (d.token ? stored === d.token : names.indexOf(stored) >= 0));
-    if (ok) { html.classList.remove('who-lock'); return; }
+    if (ok) { release(); return; }
     html.classList.add('who-lock');
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', build); else build();
+    onReady(build);
   });
+
+  function choiceBtn(p) {
+    var b = el('button', { type: 'button', class: 'who-choice' + (p.hush ? ' is-hush' : ''), 'data-who': p.name });
+    b.appendChild(el('span', { class: 'who-av', 'aria-hidden': 'true' }, p.name.charAt(0).toUpperCase()));
+    var t = el('span', { class: 'who-txt' }); t.appendChild(el('span', { class: 'who-name' }, p.name)); t.appendChild(el('span', { class: 'who-role' }, p.role));
+    b.appendChild(t); b.appendChild(el('span', { class: 'who-arrow', 'aria-hidden': 'true' }, '\u203a'));
+    return b;
+  }
 
   function svgLogo() {
     var NS = 'http://www.w3.org/2000/svg', s = document.createElementNS(NS, 'svg');
@@ -80,51 +119,46 @@
   }
 
   function build() {
-    if (document.getElementById('who-overlay')) return;
-    var locked = Array.prototype.slice.call(document.body.children);
+    var overlay = document.getElementById('who-overlay');
+    if (!overlay) {                       // fallback for a page without the static gate markup
+      overlay = el('div', { class: 'who-overlay in', id: 'who-overlay' });
+      var c0 = el('div', { class: 'who-card', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'who-title', tabindex: '-1' });
+      var h0 = el('div', { class: 'who-brand' }); h0.appendChild(svgLogo());
+      var b0 = el('div'); b0.appendChild(el('span', { class: 'who-eyebrow' }, 'Hush Media Creations')); b0.appendChild(el('span', { class: 'who-sub', id: 'who-sub' }, '3D character design'));
+      h0.appendChild(b0); c0.appendChild(h0);
+      c0.appendChild(el('h2', { id: 'who-title' }, 'Who are you?'));
+      c0.appendChild(el('p', { class: 'who-lead', id: 'who-lead' }, 'Choose your name to continue.'));
+      c0.appendChild(el('div', { class: 'who-choices', id: 'who-choices', role: 'group' }));
+      var f0 = el('form', { class: 'who-hush', id: 'who-hush', hidden: 'hidden', novalidate: '' });
+      f0.appendChild(el('label', { for: 'who-pass' }, 'Password for Hush'));
+      f0.appendChild(el('input', { type: 'password', id: 'who-pass', autocomplete: 'current-password', maxlength: '200' }));
+      f0.appendChild(el('p', { class: 'error field-error', id: 'who-error', role: 'alert', hidden: 'hidden' }, 'Wrong password. Try again.'));
+      var r0 = el('div', { class: 'who-hush-actions' });
+      r0.appendChild(el('button', { type: 'button', class: 'btn btn-secondary', id: 'who-back' }, 'Back'));
+      r0.appendChild(el('button', { type: 'submit', class: 'btn', id: 'who-signin' }, 'Sign in'));
+      f0.appendChild(r0); c0.appendChild(f0); overlay.appendChild(c0);
+      document.body.insertBefore(overlay, document.body.firstChild);
+    }
+    if (overlay.getAttribute('data-wired')) return;
+    overlay.setAttribute('data-wired', '1');
+    overlay.classList.add('in');
+    var card = overlay.querySelector('.who-card');
+    var locked = Array.prototype.filter.call(document.body.children, function (n) { return n !== overlay; });
     locked.forEach(function (n) { n.setAttribute('inert', ''); n.setAttribute('aria-hidden', 'true'); });
+    if (info.title) document.getElementById('who-sub').textContent = info.title + ' \u00b7 3D character design';
 
-    var overlay = el('div', { class: 'who-overlay', id: 'who-overlay' });
-    var card = el('div', { class: 'who-card', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'who-title', 'aria-describedby': 'who-lead', tabindex: '-1' });
-    var head = el('div', { class: 'who-brand' });
-    head.appendChild(svgLogo());
-    var bt = el('div'); bt.appendChild(el('span', { class: 'who-eyebrow' }, 'Hush Media Creations'));
-    bt.appendChild(el('span', { class: 'who-sub' }, info.title ? info.title + ' \u00b7 3D character design' : '3D character design'));
-    head.appendChild(bt); card.appendChild(head);
-    card.appendChild(el('h2', { id: 'who-title' }, 'Who are you?'));
-    card.appendChild(el('p', { class: 'who-lead', id: 'who-lead' },
-      PAGE === 'project' ? 'Choose your name to start picking. Your picks are saved under this name.' : 'Choose your name to continue.'));
-
-    var choices = el('div', { class: 'who-choices', role: 'group', 'aria-label': 'Choose who you are' });
-    var list = [{ name: NAME, role: 'Studio \u00b7 admin', hush: true }].concat(info.people);
-    list.forEach(function (p) {
-      var b = el('button', { type: 'button', class: 'who-choice' + (p.hush ? ' is-hush' : ''), 'data-who': p.name });
-      b.appendChild(el('span', { class: 'who-av', 'aria-hidden': 'true' }, p.name.charAt(0).toUpperCase()));
-      var t = el('span', { class: 'who-txt' }); t.appendChild(el('span', { class: 'who-name' }, p.name)); t.appendChild(el('span', { class: 'who-role' }, p.role));
-      b.appendChild(t);
-      b.appendChild(el('span', { class: 'who-arrow', 'aria-hidden': 'true' }, '\u203a'));
-      choices.appendChild(b);
-    });
+    // Replace the static client buttons with the people this page really allows.
+    var choices = document.getElementById('who-choices');
+    Array.prototype.slice.call(choices.querySelectorAll('[data-who]:not(.is-hush), .who-note')).forEach(function (n) { n.remove(); });
+    if (!choices.querySelector('.is-hush')) choices.appendChild(choiceBtn({ name: NAME, role: 'Studio \u00b7 admin', hush: true }));
+    info.people.forEach(function (p) { choices.appendChild(choiceBtn(p)); });
     if (!info.people.length && PAGE === 'project') choices.appendChild(el('p', { class: 'who-note' }, 'Could not load this project. Check the link you were sent.'));
-    card.appendChild(choices);
 
-    var hushPane = el('form', { class: 'who-hush', id: 'who-hush', hidden: 'hidden', novalidate: '' });
-    hushPane.appendChild(el('input', { type: 'text', name: 'username', autocomplete: 'username', value: NAME, hidden: 'hidden' }));
-    hushPane.appendChild(el('label', { for: 'who-pass' }, 'Password for Hush'));
-    var pass = el('input', { type: 'password', id: 'who-pass', name: 'password', autocomplete: 'current-password', maxlength: '200', 'aria-describedby': 'who-error' });
-    hushPane.appendChild(pass);
-    var err = el('p', { class: 'error field-error', id: 'who-error', role: 'alert', hidden: 'hidden' }, 'Wrong password. Try again.');
-    hushPane.appendChild(err);
-    var row = el('div', { class: 'who-hush-actions' });
-    var back = el('button', { type: 'button', class: 'btn btn-secondary', id: 'who-back' }, 'Back');
-    var go = el('button', { type: 'submit', class: 'btn', id: 'who-signin' }, 'Sign in');
-    row.appendChild(back); row.appendChild(go); hushPane.appendChild(row);
-    hushPane.appendChild(el('p', { class: 'who-fine' }, 'Checked in this browser only. Nothing is sent.'));
-    card.appendChild(hushPane);
-
-    overlay.appendChild(card);
-    document.body.appendChild(overlay);
-    requestAnimationFrame(function () { overlay.classList.add('in'); });
+    var hushPane = document.getElementById('who-hush');
+    var pass = document.getElementById('who-pass');
+    var err = document.getElementById('who-error');
+    var back = document.getElementById('who-back');
+    var go = document.getElementById('who-signin');
     card.focus();
 
     function focusables() { return Array.prototype.filter.call(card.querySelectorAll('button,input:not([hidden]),[tabindex="0"]'), function (n) { return !n.disabled && n.offsetParent !== null; }); }
@@ -146,6 +180,7 @@
       setTimeout(function () {
         overlay.remove(); html.classList.remove('who-lock');
         locked.forEach(function (n) { n.removeAttribute('inert'); n.removeAttribute('aria-hidden'); });
+        switchPill();
       }, 220);
     }
     function showHush() { choices.hidden = true; hushPane.hidden = false; pass.value = ''; err.hidden = true; pass.focus(); }

@@ -151,13 +151,19 @@ html.who-lock body>*:not(.who-overlay){pointer-events:none;user-select:none}
 html.who-lock #gate{display:none}
 .who-overlay{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;
 background:radial-gradient(1200px 600px at 50% 0%,rgba(242,192,99,.10),transparent 60%),rgba(6,7,10,.62);
--webkit-backdrop-filter:blur(14px) saturate(120%);backdrop-filter:blur(14px) saturate(120%);opacity:0;transition:opacity .22s ease;overflow-y:auto}
+-webkit-backdrop-filter:blur(14px) saturate(120%);backdrop-filter:blur(14px) saturate(120%);opacity:1;transition:opacity .22s ease;overflow-y:auto}
 .who-overlay.in{opacity:1}.who-overlay.out{opacity:0}
 .who-card{position:relative;width:min(440px,100%);margin:auto;padding:26px 24px 20px;border-radius:20px;
 background:linear-gradient(180deg,rgba(32,33,43,.96),rgba(20,21,28,.97));border:1px solid rgba(242,192,99,.22);
 box-shadow:0 30px 80px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.03) inset,0 0 60px rgba(242,192,99,.08);
-transform:translateY(14px) scale(.97);transition:transform .28s cubic-bezier(.2,.8,.2,1);outline:none}
+transform:none;transition:transform .28s cubic-bezier(.2,.8,.2,1);outline:none}
 .who-overlay.in .who-card{transform:none}
+html:not(.who-lock) #who-overlay{display:none}
+.who-pill{position:fixed;right:14px;bottom:14px;z-index:900;display:flex;align-items:center;gap:8px;padding:6px 14px 6px 6px;font:inherit;font-size:.9rem;color:var(--text);cursor:pointer;
+background:rgba(20,21,28,.92);border:1px solid rgba(242,192,99,.35);border-radius:999px;box-shadow:0 8px 24px rgba(0,0,0,.45)}
+.who-pill:hover{border-color:var(--gold)}
+.who-pill-av{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;font-weight:800;color:#1a1408;background:linear-gradient(135deg,#f5c46b,#c98a2e)}
+.who-pill-sw{color:var(--gold);text-decoration:underline;font-size:.85em}
 .who-card::before{content:"";position:absolute;left:24px;right:24px;top:0;height:2px;border-radius:2px;background:linear-gradient(90deg,transparent,var(--gold),transparent)}
 .who-brand{display:flex;align-items:center;gap:12px;margin-bottom:18px}
 .who-brand svg{flex:none;filter:drop-shadow(0 4px 14px rgba(242,192,99,.25))}
