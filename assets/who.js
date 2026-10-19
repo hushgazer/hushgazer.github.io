@@ -26,6 +26,7 @@
   var PAGE = (me && me.getAttribute('data-page')) || 'home';
   var ROOT = (me && me.getAttribute('data-root')) || './';
   var SLUG = (me && me.getAttribute('data-slug')) || '';
+  var PAGE_BUILD = (me && me.getAttribute('data-build')) || '';
   var html = document.documentElement;
   function hex(buf) { return Array.prototype.map.call(new Uint8Array(buf), function (b) { return ('0' + b.toString(16)).slice(-2); }).join(''); }
   function sha(s) { return crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)).then(hex); }
@@ -33,6 +34,29 @@
   function set(k, v) { try { sessionStorage.setItem(k, v); } catch (e) {} }
 
   function del(k) { try { sessionStorage.removeItem(k); } catch (e) {} }
+
+  // Stale-page auto-reload: if HTML data-build lags assets/build.json, bust HTML cache once.
+  (function checkBuild() {
+    if (!PAGE_BUILD) return;
+    var root = ROOT || './';
+    fetch(root + 'assets/build.json', { cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        if (!j || j.v == null) return;
+        var remote = String(j.v);
+        if (remote === String(PAGE_BUILD)) { set('hush-build', remote); return; }
+        var flag = 'hush-reloaded-' + remote;
+        if (get(flag)) return;
+        set(flag, '1');
+        try {
+          var u = new URL(location.href);
+          u.searchParams.set('_', remote);
+          location.replace(u.toString());
+        } catch (e) {}
+      })
+      .catch(function () {});
+  })();
+
   var KEYS = ['hush-who', 'hush-who-auth', 'hush-admin', 'hush-admin-key', 'hush-admin-name'];
   function hasPw(n) { return Object.prototype.hasOwnProperty.call(CLIENT_LOGIN_HASH, n); }
 

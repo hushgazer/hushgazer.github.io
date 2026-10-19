@@ -1,6 +1,8 @@
 """Insert the static "Who are you?" gate markup into every page that loads who.js, put class="who-lock"
-on <html>, and cache-bust assets (?v=N). Idempotent. Usage: python3 tools/inject_gate.py [version]"""
-import re, sys, glob, os
+on <html>, and cache-bust assets (?v=N). Also stamps data-build=N on who.js script tags and
+writes assets/build.json so who.js can auto-reload stale HTML. Idempotent.
+Usage: python3 tools/inject_gate.py [version]"""
+import re, sys, glob, os, json
 R = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 V = sys.argv[1] if len(sys.argv) > 1 else '3'
 SVG = ('<svg viewBox="0 0 64 64" width="46" height="46" aria-hidden="true"><defs><linearGradient id="whog" x1="0" y1="0" x2="1" y2="1">'
@@ -25,13 +27,24 @@ def gate(project):
       '<p class="who-fine">Checked in this browser only. Nothing is sent.</p></form>'
       '<noscript><p class="who-note">Please turn on JavaScript to continue.</p></noscript>'
       '</div></div>\n<!-- WHO-GATE:END -->\n')
+def stamp_who_build(tag):
+    """Idempotently set data-build=V on a <script ... who.js ...> tag."""
+    if re.search(r'\bdata-build=', tag):
+        return re.sub(r'\bdata-build="[^"]*"', f'data-build="{V}"', tag)
+    return tag[:-1] + f' data-build="{V}">'
 files = [f for f in glob.glob(f'{R}/**/*.html', recursive=True) if '/tools/' not in f]
 for f in files:
     s = open(f).read(); o = s
     s = re.sub(r'((?:assets/)(?:style\.css|who\.js|admin\.js|home\.js|project\.js|admin-login\.js))(\?v=[^"]*)?"', rf'\1?v={V}"', s)
+    s = re.sub(r'<script\b[^>]*\bwho\.js[^>]*>', lambda m: stamp_who_build(m.group(0)), s)
     if 'who.js' in s:
         project = 'data-page="project"' in s
         s = re.sub(r'<html lang="en"[^>]*>', '<html lang="en" class="who-lock">', s, count=1)
         s = re.sub(r'<!-- WHO-GATE:BEGIN.*?<!-- WHO-GATE:END -->\n', '', s, flags=re.S)
         s = re.sub(r'(<body[^>]*>\n?)', lambda m: m.group(1) + gate(project), s, count=1)
     if s != o: open(f, 'w').write(s); print('updated', os.path.relpath(f, R))
+# Keep assets/build.json in sync with the cache-bust version (auto-reload reads this).
+bj = os.path.join(R, 'assets', 'build.json')
+ver = int(V) if str(V).isdigit() else V
+open(bj, 'w').write(json.dumps({"v": ver}, separators=(',', ':')) + '\n')
+print('wrote assets/build.json v=' + str(ver))
