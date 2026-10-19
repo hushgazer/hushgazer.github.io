@@ -122,6 +122,21 @@
         1646,
         2172
       ]
+    },
+    {
+      "file": "collage-11.png",
+      "options": 7,
+      "label": "Stage 1 Variations",
+      "columns": [
+        0,
+        375,
+        661,
+        1007,
+        1309,
+        1617,
+        1940,
+        2172
+      ]
     }
   ],
   "imageBot": "12d51f4d-848b-4f40-b43d-204baade127c",
