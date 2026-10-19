@@ -106,36 +106,6 @@
         1739,
         2172
       ]
-    },
-    {
-      "file": "collage-8.png",
-      "options": 7,
-      "label": "Collage 8",
-      "columns": [
-        0,
-        203,
-        449,
-        723,
-        1039,
-        1425,
-        1761,
-        2172
-      ]
-    },
-    {
-      "file": "collage-9.png",
-      "options": 7,
-      "label": "Collage 9",
-      "columns": [
-        0,
-        146,
-        380,
-        616,
-        954,
-        1350,
-        1735,
-        2172
-      ]
     }
   ],
   "imageBot": "12d51f4d-848b-4f40-b43d-204baade127c",
