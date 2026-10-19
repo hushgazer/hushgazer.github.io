@@ -2,12 +2,24 @@
 """Build a full-quality PNG sheet of the chosen characters from a picks payload.
 
 Usage: python3 tools/make_picks_sheet.py payload.json [-o out.png] [--root SITE_DIR]
+                                         [--project-dir DIR] [--no-marked]
 
 Payload (schema hush-picks/v1): {"project": slug, "picks": [{"collage", "file",
 "option", "options", "crop": {"x","y","w","h"}}...]}. Crops are cut from the
 ORIGINAL collage images at native resolution (no downscaling); each tile gets a
 "Collage X - option Y" label. If a crop is missing it is recomputed from
-projects/<slug>/project.json (equal columns or custom "columns")."""
+projects/<slug>/project.json (equal columns or custom "columns").
+
+Also writes one MARKED copy per collage to <out-stem>-marked/<collage-stem>-pick<N>.png:
+the original collage at its native size (never resampled or recompressed lossily,
+source files untouched) with the chosen character outlined (cyan #00E5FF + dark
+inner stroke, ~1% of image height) and a "PICK #N" label at the top of the box.
+
+--project-dir DIR: folder holding the collage images (default projects/<slug>/
+under --root; payload "file" paths with a "/" are resolved against --root first,
+then by file name inside --project-dir).
+If projects/<slug>/project.json has an optional "imageBot" field (agent id of
+the image bot that made the project) it is printed as "imageBot: <id>"."""
 import argparse, json, os
 from PIL import Image, ImageDraw, ImageFont
 
@@ -16,22 +28,61 @@ def font(sz):
         if os.path.exists(p): return ImageFont.truetype(p, sz)
     return ImageFont.load_default(sz)
 
-def crop_from_config(root, slug, idx, opt, im):
-    cfg = json.load(open(os.path.join(root, "projects", slug, "project.json")))["collages"][idx]
+def crop_from_config(pj, idx, opt, im):
+    cfg = json.load(open(pj))["collages"][idx]
     n = cfg["options"]; cols = cfg.get("columns")
     b = [c / cols[-1] for c in cols] if cols and len(cols) == n + 1 else [i / n for i in range(n + 1)]
     x = round(b[opt - 1] * im.width); return {"x": x, "y": 0, "w": round(b[opt] * im.width) - x, "h": im.height}
 
+CYAN, DARK = (0, 229, 255), (10, 12, 16)
+
+def mark(im, c, opt):
+    """Return a copy of im (same size/mode family) with crop box c outlined. No resampling."""
+    m = im.convert("RGBA") if im.mode not in ("RGB", "RGBA") else im.copy()
+    d = ImageDraw.Draw(m)
+    t = max(4, round(im.height * 0.01)); inner = max(2, t // 3)
+    x0, y0 = max(0, c["x"]), max(0, c["y"])
+    x1, y1 = min(im.width, c["x"] + c["w"]) - 1, min(im.height, c["y"] + c["h"]) - 1
+    d.rectangle((x0, y0, x1, y1), outline=CYAN, width=t)                      # bright outer stroke
+    d.rectangle((x0 + t, y0 + t, x1 - t, y1 - t), outline=DARK, width=inner)  # dark inner stroke
+    label = f"PICK #{opt}"; f = font(max(18, round(im.height * 0.06)))
+    bb = d.textbbox((0, 0), label, font=f); tw, th = bb[2] - bb[0], bb[3] - bb[1]
+    px, py = max(6, th // 3), max(4, th // 4)
+    lx = x0 + max(0, (c["w"] - tw - 2 * px) // 2); ly = y0 + t + inner + 6
+    d.rectangle((lx, ly, lx + tw + 2 * px, ly + th + 2 * py), fill=CYAN, outline=DARK, width=max(2, inner // 2))
+    d.text((lx + px - bb[0], ly + py - bb[1]), label, font=f, fill=DARK)
+    return m
+
+def resolve(root, pdir, f):
+    cands = ([os.path.join(root, f)] if "/" in f else []) + [os.path.join(pdir, os.path.basename(f))]
+    for c in cands:
+        if os.path.exists(c): return c
+    raise FileNotFoundError(f"collage not found: {f} (tried {', '.join(cands)})")
+
 def main():
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     ap = argparse.ArgumentParser(); ap.add_argument("payload"); ap.add_argument("-o", "--out"); ap.add_argument("--root", default=here)
+    ap.add_argument("--project-dir", help="folder with the collage images (default ROOT/projects/<slug>)")
+    ap.add_argument("--no-marked", action="store_true", help="skip the marked full-size copies")
     a = ap.parse_args()
     data = json.load(open(a.payload)); slug = data["project"]
+    pdir = a.project_dir or os.path.join(a.root, "projects", slug)
+    pj = os.path.join(a.root, "projects", slug, "project.json")
+    if not os.path.exists(pj) and a.project_dir: pj = os.path.join(a.project_dir, "project.json")
+    bot = json.load(open(pj)).get("imageBot") if os.path.exists(pj) else None
+    out = a.out or os.path.join(a.root, f"picks-sheet-{slug}.png")
+    os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
+    mdir = os.path.splitext(out)[0] + "-marked"; marked = []
     tiles = []
     for i, p in enumerate(sorted(data["picks"], key=lambda p: p["collage"])):
-        path = os.path.join(a.root, p["file"]) if "/" in p["file"] else os.path.join(a.root, "projects", slug, p["file"])
+        path = resolve(a.root, pdir, p["file"])
         im = Image.open(path); im.load()
-        c = p.get("crop") or crop_from_config(a.root, slug, p["collage"] - 1, p["option"], im)
+        c = p.get("crop") or crop_from_config(pj, p["collage"] - 1, p["option"], im)
+        if not a.no_marked:
+            os.makedirs(mdir, exist_ok=True)
+            mp = os.path.join(mdir, f"{os.path.splitext(os.path.basename(path))[0]}-pick{p['option']}.png")
+            mk = mark(im, c, p["option"]); assert mk.size == im.size
+            mk.save(mp, compress_level=6); marked.append((mp, mk.size))  # PNG = lossless, original size
         tiles.append((im.crop((c["x"], c["y"], c["x"] + c["w"], c["y"] + c["h"])), f"Collage {p['collage']} - option {p['option']}"))
     pad, lab = 30, 90
     f = font(44)
@@ -47,9 +98,10 @@ def main():
         bb = d.textbbox((0, 0), label, font=f)
         d.text((x + (cw - (bb[2] - bb[0])) / 2, 70 + pad + t.height + 20), label, font=f, fill=(236, 235, 242))
         x += cw + pad
-    out = a.out or os.path.join(a.root, f"picks-sheet-{slug}.png")
     sheet.save(out, compress_level=6)  # PNG is lossless
     print(out, sheet.size)
+    for mp, sz in marked: print("marked:", mp, sz)
+    if bot: print("imageBot:", bot)
 
 if __name__ == "__main__":
     main()

@@ -1,6 +1,7 @@
 # Generated previews / tool outputs (not part of the site)
 preview*.png
 picks-sheet*.png
+picks-sheet*-marked/
 tools/out/
 *.out.png
 # Python / OS / editor junk
