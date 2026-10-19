@@ -265,9 +265,53 @@
     st.textContent = sel.length ? ('Picked: ' + fmtOpts(sel) + ' · tap again to unpick') : 'Not picked yet · tap to pick (as many as you want)';
     st.classList.toggle('done', sel.length > 0);
   }
+  // Tiny non-blocking toast when the client SELECTs a character (not on deselect).
+  var PICK_CHEERS = [
+    { t: 'Awesome!', e: '\ud83d\udd25' },
+    { t: 'Good pick!', e: '\u2728' },
+    { t: 'Nice one!', e: '\ud83d\udc4f' },
+    { t: 'Love it!', e: '\ud83d\udcaf' },
+    { t: 'Fire!', e: '\ud83d\udd25' },
+    { t: 'Yes!', e: '\ud83d\udcaa' },
+    { t: 'Solid!', e: '\ud83d\ude0e' }
+  ];
+  function flashPickToast(originEl) {
+    var prev = document.getElementById('hush-pick-toast');
+    if (prev) prev.remove();
+    var cheer = PICK_CHEERS[Math.floor(Math.random() * PICK_CHEERS.length)];
+    var toast = el('div', {
+      id: 'hush-pick-toast', class: 'pick-toast', role: 'status', 'aria-live': 'polite'
+    });
+    toast.appendChild(el('span', { class: 'pick-toast-emoji', 'aria-hidden': 'true' }, cheer.e));
+    toast.appendChild(el('span', { class: 'pick-toast-text' }, cheer.t));
+    document.body.appendChild(toast);
+    // Prefer near the tapped option; fall back to upper-center chip.
+    try {
+      if (originEl && originEl.getBoundingClientRect) {
+        var r = originEl.getBoundingClientRect();
+        var tw = 160, th = 44;
+        var left = Math.round(r.left + r.width / 2 - tw / 2);
+        var top = Math.round(r.top - th - 8);
+        if (top < 8) top = Math.round(r.bottom + 8);
+        left = Math.max(8, Math.min(left, window.innerWidth - tw - 8));
+        toast.style.left = left + 'px';
+        toast.style.top = top + 'px';
+        toast.classList.add('is-anchored');
+      }
+    } catch (e) {}
+    // Force reflow then animate in
+    void toast.offsetWidth;
+    toast.classList.add('in');
+    setTimeout(function () {
+      toast.classList.remove('in');
+      toast.classList.add('out');
+      setTimeout(function () { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 220);
+    }, 820);
+  }
+
   // Multi-select: tap to pick (fills first empty pack slot), tap again to unpick
   // (clears that character from any slot). Pack slots keep fixed length / holes.
-  function togglePick(i, opt) {
+  function togglePick(i, opt, originEl) {
     var cur = (picks[i] || []).slice();
     var idx = cur.indexOf(opt);
     if (idx >= 0) {
@@ -280,8 +324,9 @@
         lineupOrder[slot] = { c: i, o: opt };
       } else {
         // Pack full: keep collage pick, briefly hint — don't overwrite a slot.
-        flashBarHint('Pack full — clear a slot (×) or drag to swap');
+        flashBarHint('Pack full — clear a slot (\u00d7) or drag to swap');
       }
+      flashPickToast(originEl || null);
     }
     picks[i] = cur.sort(function (a, b) { return a - b; });
     save();
@@ -750,7 +795,7 @@
           btn.setAttribute('aria-label', btn.getAttribute('aria-label') + ' (' + o.from + '’s pick)');
         }
       });
-      btn.addEventListener('click', (function (opt) { return function () { togglePick(i, opt); }; })(k));
+      btn.addEventListener('click', (function (opt) { return function (ev) { togglePick(i, opt, ev && ev.currentTarget); }; })(k));
       frame.appendChild(btn);
       var s = el('span', null, String(k)); s.style.left = left; s.style.width = width;
       nums.appendChild(s);

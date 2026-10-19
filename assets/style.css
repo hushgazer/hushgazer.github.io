@@ -291,3 +291,14 @@ html.celebrate-lock,html.celebrate-lock body{overflow:hidden;overscroll-behavior
 .celebrate-done:focus-visible{outline:2px solid var(--gold);outline-offset:3px}
 @media (max-width:560px){.celebrate-card{padding:22px 14px 18px;border-radius:14px}.celebrate-lineup.picks{grid-template-columns:repeat(auto-fill,minmax(96px,1fr))}.celebrate-lineup canvas,.celebrate-lineup .ph{height:110px}}
 @media (prefers-reduced-motion:reduce){.celebrate-overlay{-webkit-backdrop-filter:none;backdrop-filter:none}.celebrate-confetti{display:none}}
+
+/* Quick pick cheer toast (select only) — CSS-only “display” feel, no external fonts */
+.pick-toast{position:fixed;left:50%;top:18%;z-index:2400;display:inline-flex;align-items:center;gap:8px;padding:10px 18px;border-radius:999px;background:rgba(20,21,28,.94);border:1px solid rgba(242,192,99,.65);box-shadow:0 12px 32px rgba(0,0,0,.45),0 0 0 1px rgba(60,242,166,.15);pointer-events:none;transform:translate(-50%,8px) scale(.86) skewX(-4deg);opacity:0;transition:opacity .18s ease,transform .22s cubic-bezier(.2,1.4,.4,1);will-change:transform,opacity}
+.pick-toast.is-anchored{transform:translate(0,8px) scale(.86) skewX(-4deg)}
+.pick-toast.in{opacity:1;transform:translate(-50%,0) scale(1) skewX(-4deg)}
+.pick-toast.is-anchored.in{transform:translate(0,0) scale(1) skewX(-4deg)}
+.pick-toast.out{opacity:0;transform:translate(-50%,-10px) scale(.92) skewX(-4deg);transition-duration:.2s}
+.pick-toast.is-anchored.out{transform:translate(0,-10px) scale(.92) skewX(-4deg)}
+.pick-toast-emoji{font-size:1.15rem;line-height:1}
+.pick-toast-text{font-weight:900;font-size:1.05rem;letter-spacing:.06em;text-transform:uppercase;color:var(--gold);font-family:Impact,Haettenschweiler,'Arial Narrow Bold',system-ui,sans-serif;text-shadow:0 1px 0 rgba(0,0,0,.45)}
+@media (prefers-reduced-motion:reduce){.pick-toast,.pick-toast.in,.pick-toast.out{transition:opacity .15s ease;transform:translate(-50%,0);skew:none}.pick-toast.is-anchored,.pick-toast.is-anchored.in,.pick-toast.is-anchored.out{transform:none}}
