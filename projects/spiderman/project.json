@@ -1,27 +1,9 @@
 {
   "title": "Spider-Man",
-  "description": "Tap the characters you like in each collage \u2014 as many as you want. Tap again to unpick.",
+  "description": "Tap the characters you like in each collage — as many as you want. Tap again to unpick.",
   "packSize": 8,
-  "note": "Heads up: Spider-Man is a copyrighted character, so these concept models are blank black-suit stand-ins with no logos. The final model will be proper Spider-Man when it\u2019s made.",
+  "note": "Heads up: Spider-Man is a copyrighted character, so these concept models are blank black-suit stand-ins with no logos. The final model will be proper Spider-Man when it’s made.",
   "collages": [
-    {
-      "file": "collage-1.png",
-      "options": 8,
-      "label": "Collage 1",
-      "columns": [
-        0,
-        181,
-        376,
-        555,
-        853,
-        1151,
-        1453,
-        1717,
-        2172
-      ],
-      "cropTop": 46,
-      "section": "Batch 1"
-    },
     {
       "file": "collage-2.png",
       "options": 8,
@@ -191,7 +173,7 @@
         1792
       ],
       "cropTop": 62,
-      "section": "Batch 2 \u2014 More accurate, lower image quality",
+      "section": "Batch 2 — More accurate, lower image quality",
       "sectionNote": "New set: closer to the real Spider-Man look, but the images are lower resolution."
     },
     {
