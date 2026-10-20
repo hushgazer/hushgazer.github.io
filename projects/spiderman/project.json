@@ -187,5 +187,85 @@
       "keyHash": "e53c5db36d240e8f6160aa20e4399d6d6c2a862b8daa7eae4ac49f6e9d4b5f52",
       "role": "advisor"
     }
+  ],
+  "opinions": [
+    {
+      "from": "Adam",
+      "clientTag": "e53c5db3",
+      "submittedAt": "2026-10-20T12:10:14.797Z",
+      "overall": "",
+      "picks": [
+        {
+          "collage": 1,
+          "file": "collage-1.png",
+          "option": [
+            3,
+            5
+          ]
+        },
+        {
+          "collage": 4,
+          "file": "collage-4.png",
+          "option": [
+            1,
+            3
+          ]
+        },
+        {
+          "collage": 6,
+          "file": "collage-6.png",
+          "option": 3
+        },
+        {
+          "collage": 7,
+          "file": "collage-7.png",
+          "option": 8
+        },
+        {
+          "collage": 8,
+          "file": "collage-8.png",
+          "option": 2
+        }
+      ],
+      "packSize": 8,
+      "lineup": [
+        {
+          "collage": 4,
+          "file": "collage-4.png",
+          "option": 1
+        },
+        {
+          "collage": 8,
+          "file": "collage-8.png",
+          "option": 2
+        },
+        {
+          "collage": 1,
+          "file": "collage-1.png",
+          "option": 3
+        },
+        {
+          "collage": 4,
+          "file": "collage-4.png",
+          "option": 3
+        },
+        {
+          "collage": 1,
+          "file": "collage-1.png",
+          "option": 5
+        },
+        {
+          "collage": 6,
+          "file": "collage-6.png",
+          "option": 3
+        },
+        {
+          "collage": 7,
+          "file": "collage-7.png",
+          "option": 8
+        },
+        null
+      ]
+    }
   ]
 }
