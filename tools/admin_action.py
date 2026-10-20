@@ -138,7 +138,36 @@ def apply_project(action, slug, remove_files):
         json.dump(d, f, indent=2)
         f.write('\n')
 
+def picked_by(slug, file_, root=None):
+    """Names of clients whose published picks use this collage file.
+    Sources: projects/<slug>/submissions.json (every client, tools/publish_opinion.py)
+    and project.json "opinions" (advisors). Same rule as the admin UI + admin Worker."""
+    base = os.path.join(root or R, 'projects', slug)
+    recs = []
+    sj = os.path.join(base, 'submissions.json')
+    if os.path.isfile(sj):
+        for k, v in (json.load(open(sj)).get('clients') or {}).items():
+            if isinstance(v, dict): recs.append((v.get('from') or k, v))
+    pj = os.path.join(base, 'project.json')
+    if os.path.isfile(pj):
+        for o in json.load(open(pj)).get('opinions') or []:
+            if isinstance(o, dict): recs.append((o.get('from') or '?', o))
+    def opts(x):
+        o = x.get('option', x.get('selected'))
+        o = o if isinstance(o, list) else [o]
+        return [n for n in o if isinstance(n, int) and n >= 1]
+    names = []
+    for name, r in recs:
+        hit = any(isinstance(p, dict) and os.path.basename(str(p.get('file') or '')) == file_ and opts(p) for p in r.get('picks') or [])
+        hit = hit or any(isinstance(e, dict) and os.path.basename(str(e.get('file') or '')) == file_ for e in r.get('lineup') or [])
+        if hit and name not in names: names.append(name)
+    return names
+
 def apply_collage(action, slug, file_):
+    if action == 'delete-collage':
+        who = picked_by(slug, file_)
+        if who:
+            reject(f"{slug}/{file_}: picked by {' & '.join(who)} - can't delete (hide it instead)")
     pj_path = _safe_under(R, 'projects', slug, 'project.json')
     if not os.path.isfile(pj_path):
         sys.exit(f'{slug}: projects/{slug}/project.json missing')

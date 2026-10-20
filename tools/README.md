@@ -46,6 +46,20 @@ no passwords, no trackers, no external scripts. Picks are emailed through FormSu
   It checks the payload's `clientTag` belongs to an advisor, refuses `test:true`
   payloads, and writes `"opinions"` into project.json. Commit + push.
   Remove: `python3 tools/publish_opinion.py --project <slug> --remove Adam`.
+* **Every real submission (decider OR advisor) is also published for Hush's view:**
+  `python3 tools/publish_opinion.py --role decider <payload.json>` (Julius) /
+  `python3 tools/publish_opinion.py --role advisor <payload.json>` (Adam; also writes `"opinions"`).
+  `--role` is optional (auto-detected from `clientTag`) but refuses a payload of the wrong role.
+  Writes `projects/<slug>/submissions.json` → `{"clients": {"<Name>": {from, role, clientTag,
+  submittedAt, overall, packSize, picks[{collage,file,option,note}], lineup[{collage,file,option}|null]}}}`,
+  keyed by collage **file**; the newest `submittedAt` wins (a resubmit replaces it, an older replay is ignored).
+  Picks on a collage that has since been deleted are kept with a warning and shown as **Deleted** slots.
+  Commit `projects/<slug>/submissions.json` (+ `project.json` for advisors) and push.
+* **Hush's "Client picks" previews**: signed-in Hush (or test mode "View as Hush") sees, at the top
+  of every project page, one block per client (decider first): numbered pack slots with crops in
+  the client's order, empty = Remake, submitted time, note/opinion, or "No picks yet". Only the admin
+  view loads `submissions.json` (it is still a public file on Pages, like project.json); clients'
+  visibility is unchanged (deciders see advisors' opinions; advisors see only their own lineup).
 * **decider** (e.g. Julius) sees a small "Adam's pick" tag on the character and an
   "Adam's opinion" section below the last collage (above the submit area).
 * Note: project.json is public, so a published opinion is readable by anyone who has
@@ -101,7 +115,8 @@ no passwords, no trackers, no external scripts. Picks are emailed through FormSu
   * **skips** any email whose subject contains `[TEST]` or whose payload has `test: true`
   * skips already-handled ones (state in `processed-picks.json`, git-ignored)
   * for an advisor payload: `publish_opinion.py` (after Hush OKs publishing)
-  * for a decider/client payload: builds the picks sheet + marked copies and sends them
+  * for a decider/client payload: `python3 tools/publish_opinion.py --role decider <payload.json>`
+    (Hush's preview + delete guard; commit `projects/<slug>/submissions.json`, push), then builds the picks sheet + marked copies and sends them
     with the file paths and option numbers to the project's `imageBot`, then tells Hush.
 
 ## 5. Picks sheet and marked copies
@@ -137,6 +152,14 @@ no passwords, no trackers, no external scripts. Picks are emailed through FormSu
   page; the project URL shows "This project isn't available right now" to anyone not signed
   in. **Hidden collage** (`"hidden": true` on a collage entry in `projects/<slug>/project.json`):
   omitted for clients; admin still sees it greyed.
+* **Delete guard**: a collage that ANY client (decider or advisor) has picked can't be deleted
+  (Hide still works). "Picked" = a published record in `projects/<slug>/submissions.json` or a
+  project.json `"opinions"` entry with a pick or pack slot on that collage **file**. Enforced in
+  three places: the admin UI (Delete disabled: "Picked by Julius — can't delete"; also disabled
+  while picks are loading/failed), the admin Worker (fetches both files from GitHub before a
+  delete-collage; 409 `{"code":"picked","pickedBy":[…]}`, fails closed if it can't read them), and
+  `tools/admin_action.py delete-collage` (REJECTED, exit 2). To delete anyway, first remove the
+  record (`publish_opinion.py --project <slug> --remove NAME --submission`).
 * **Optimistic UI**: Hide / Unhide flip this tab immediately; **Delete collage** only
   greys out until FormSubmit accepts, then removes it from the tab. On send failure the
   tab reverts and shows **NOT PUBLISHED**. The signed FormSubmit request still goes out

@@ -1,0 +1,79 @@
+{
+  "clients": {
+    "Julius": {
+      "from": "Julius",
+      "role": "decider",
+      "clientTag": "83682107",
+      "submittedAt": "2026-10-20T15:08:50.025Z",
+      "overall": "",
+      "picks": [
+        {
+          "collage": 1,
+          "file": "collage-11.png",
+          "option": 2
+        },
+        {
+          "collage": 2,
+          "file": "collage-1.png",
+          "option": [
+            2,
+            5
+          ]
+        },
+        {
+          "collage": 4,
+          "file": "collage-4.png",
+          "option": [
+            2,
+            5,
+            7
+          ]
+        },
+        {
+          "collage": 5,
+          "file": "collage-5.png",
+          "option": 1
+        }
+      ],
+      "packSize": 8,
+      "lineup": [
+        {
+          "collage": 1,
+          "file": "collage-11.png",
+          "option": 2
+        },
+        {
+          "collage": 5,
+          "file": "collage-5.png",
+          "option": 1
+        },
+        {
+          "collage": 4,
+          "file": "collage-4.png",
+          "option": 2
+        },
+        {
+          "collage": 2,
+          "file": "collage-1.png",
+          "option": 2
+        },
+        {
+          "collage": 2,
+          "file": "collage-1.png",
+          "option": 5
+        },
+        {
+          "collage": 4,
+          "file": "collage-4.png",
+          "option": 5
+        },
+        {
+          "collage": 4,
+          "file": "collage-4.png",
+          "option": 7
+        },
+        null
+      ]
+    }
+  }
+}

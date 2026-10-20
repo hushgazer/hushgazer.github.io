@@ -351,3 +351,16 @@ html.celebrate-lock,html.celebrate-lock body{overflow:hidden;overscroll-behavior
 .pick-toast-emoji{font-size:1.15rem;line-height:1}
 .pick-toast-text{font-weight:900;font-size:1.05rem;letter-spacing:.06em;text-transform:uppercase;color:var(--gold);font-family:Impact,Haettenschweiler,'Arial Narrow Bold',system-ui,sans-serif;text-shadow:0 1px 0 rgba(0,0,0,.45)}
 @media (prefers-reduced-motion:reduce){.pick-toast,.pick-toast.in,.pick-toast.out{transition:opacity .15s ease;transform:translate(-50%,0);skew:none}.pick-toast.is-anchored,.pick-toast.is-anchored.in,.pick-toast.is-anchored.out{transform:none}}
+/* Hush admin: every client's submitted pack, at the top of a project page */
+.hush-picks{border:1px solid #7c5cff;background:linear-gradient(180deg,rgba(124,92,255,.10),rgba(124,92,255,0));border-radius:var(--r);padding:16px 16px 4px;margin:0 0 26px}
+.hp-top{display:flex;align-items:baseline;gap:6px 12px;flex-wrap:wrap;margin:0 0 12px}
+.hp-top h2{margin:0;font-size:1.25rem}
+.hp-only{font-size:.75rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#b9a8ff;background:rgba(124,92,255,.18);border:1px solid rgba(124,92,255,.5);border-radius:999px;padding:3px 9px}
+.hush-picks .hp-client{margin:0 0 14px;padding:14px}
+.hush-picks .hp-client h3{margin:0;font-size:1.1rem;color:var(--gold)}
+.hp-role{font-size:.72rem;font-weight:600;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:2px 8px;margin-left:4px;vertical-align:middle}
+.hush-picks .hp-none{border-style:dashed;border-color:var(--line);opacity:.85}
+.hush-picks .hp-none .op-hint{margin:6px 0 0}
+.op-pack .op-gone{opacity:.6}
+.adm-guard{font-size:.72rem;color:var(--muted);margin-left:6px}
+.adm-c-del[disabled]{opacity:.45;cursor:not-allowed}

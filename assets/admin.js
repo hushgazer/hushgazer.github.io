@@ -14,6 +14,7 @@
   var LOCAL = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
   var PKEY = 'hush-admin-pending';
   var active = false, key = '', who = 'Hush';
+  var pickedBy = null, guardDraws = [];   // delete guard (see setPickedBy)
   try {
     key = sessionStorage.getItem('hush-admin-key') || '';
     who = sessionStorage.getItem('hush-admin-name') || 'Hush';
@@ -311,6 +312,12 @@
     },
     // Per-collage controls for a project page section. collage = {file, label?, hidden?}
     // onChange(action) after optimistic UI should update (hide|show-collage|delete-collage).
+    // Delete guard: project.js calls setPickedBy({file: ['Julius', 'Adam']}) once it has the
+    // published picks (submissions.json + project.json opinions). Until then Delete stays off.
+    setPickedBy: function (map) {
+      pickedBy = map || {};
+      guardDraws.forEach(function (f) { f(); });
+    },
     collageControls: function (slug, collage, msg, onChange) {
       var file = collage.file, label = collage.label || file;
       var key = slug + '/' + file;
@@ -364,10 +371,20 @@
         var hb = el('button', { type: 'button', class: 'adm-btn adm-c-hide', 'data-act': hidden ? 'show-collage' : 'hide-collage' },
           hidden ? 'Show collage' : 'Hide collage');
         hb.addEventListener('click', function () { act(hidden ? 'show-collage' : 'hide-collage'); });
+        var who = pickedBy ? (pickedBy[file] || []) : null;
+        if (who === null || who.length) {   // picked by a client (or picks not loaded yet): no Delete
+          var why = who === null ? 'Checking client picks\u2026' : 'Picked by ' + who.join(' & ') + ' \u2014 can\u2019t delete';
+          var gb = el('button', { type: 'button', class: 'adm-btn adm-danger adm-c-del', 'data-act': 'delete-collage', disabled: '',
+            title: who === null ? why : why + '. You can still hide it.', 'aria-label': 'Delete collage (unavailable: ' + why + ')' }, 'Delete collage');
+          box.appendChild(hb); box.appendChild(gb);
+          box.appendChild(el('span', { class: 'adm-guard' }, why));
+          return;
+        }
         var db = el('button', { type: 'button', class: 'adm-btn adm-danger adm-c-del', 'data-act': 'delete-collage' }, 'Delete collage');
         db.addEventListener('click', function () { act('delete-collage'); });
         box.appendChild(hb); box.appendChild(db);
       }
+      guardDraws.push(draw);
       draw();
       return box;
     },

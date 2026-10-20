@@ -438,7 +438,7 @@
     if (Array.isArray(o.lineup)) {
       o.lineup.forEach(function (e) {
         var i = opinionIndex(e), opt = e ? Number(e.option) : 0;
-        out.push(i >= 0 && opt >= 1 && opt <= collages[i].options ? { c: i, o: opt } : null);
+        out.push(i >= 0 && opt >= 1 && opt <= collages[i].options ? { c: i, o: opt } : (e ? { gone: true } : null));
       });
     } else {
       collages.forEach(function (c, i) {
@@ -765,7 +765,7 @@
   }
   // One advisor opinion as a pack row (same look as the sticky bar slots).
   function opinionBody(o, sec, own) {
-    var line = opinionLineup(o), filled = line.filter(Boolean).length;
+    var line = opinionLineup(o), filled = line.filter(function (e) { return e && !e.gone; }).length;
     if (o.overall) sec.appendChild(el('blockquote', { class: 'op-quote' }, '\u201c' + o.overall + '\u201d'));
     sec.appendChild(el('p', { class: 'op-hint' }, (own ? 'Your pack, in your order' : 'Pack in the order ' + o.from + ' set it') + ' \u00b7 ' +
       filled + ' of ' + line.length + ' slots filled' + (filled < line.length ? ' (empty = remake)' : '') + ' \u00b7 tap one to jump to it.'));
@@ -778,6 +778,13 @@
         empty.appendChild(el('span', { class: 'bar-slot-new', 'aria-hidden': 'true' }, 'New'));
         empty.appendChild(el('span', { class: 'bar-slot-hint', 'aria-hidden': 'true' }, 'Remake'));
         row.appendChild(empty); return;
+      }
+      if (e.gone) {   // picked from a collage that has since been deleted
+        var gone = el('div', { class: 'bar-slot bar-slot-empty op-slot op-gone', role: 'listitem', 'aria-label': 'Slot ' + (idx + 1) + ': picked from a deleted collage' });
+        gone.appendChild(el('span', { class: 'preview-badge sm', 'aria-hidden': 'true' }, '#' + (idx + 1)));
+        gone.appendChild(el('span', { class: 'bar-slot-new', 'aria-hidden': 'true' }, 'Deleted'));
+        gone.appendChild(el('span', { class: 'bar-slot-hint', 'aria-hidden': 'true' }, 'collage removed'));
+        row.appendChild(gone); return;
       }
       inPack[e.c + ':' + e.o] = true;
       var lab = collageLabel(collages[e.c], e.c);
@@ -853,7 +860,85 @@
     var list = document.getElementById('collages');
     if (old) old.replaceWith(det); else list.parentNode.insertBefore(det, list);
   }
+  // ==== HUSH'S CLIENT PICKS PREVIEWS (admin view only) ====================
+  // Signed-in Hush (and test-mode "View as Hush") sees every client's latest
+  // submitted pack at the top: projects/<slug>/submissions.json (written by
+  // tools/publish_opinion.py for deciders + advisors), falling back to
+  // project.json "opinions" for advisors. Clients never load submissions.json.
+  var hushSubs = null;   // null = not loaded yet; {} after load / 404
+  function hushView() { return ADMIN && mode === 'locked'; }
+  function loadHushSubs() {   // admin only (also feeds the Delete guard in test-mode previews)
+    if (!ADMIN) return;
+    fetch(root + 'projects/' + slug + '/submissions.json', { cache: 'no-cache' })
+      .then(function (r) { if (r.status === 404) return {}; if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (j) { hushSubs = (j && typeof j.clients === 'object' && j.clients) || {}; setGuard(); renderHushPicks(); },
+        function () { hushSubs = {}; renderHushPicks(); });   // load failed: Delete stays off
+  }
+  // Delete guard: collage file -> names of clients whose published picks/opinion use it.
+  // Same rule as the admin Worker and tools/admin_action.py.
+  function setGuard() {
+    if (!window.HushAdmin || !window.HushAdmin.setPickedBy) return;
+    var map = {};
+    function mark(rec, name) {
+      if (!rec || !name) return;
+      (Array.isArray(rec.picks) ? rec.picks : []).forEach(function (p) {
+        if (p && p.file && opinionOpts(p).length) add(p.file, name);
+      });
+      (Array.isArray(rec.lineup) ? rec.lineup : []).forEach(function (e) { if (e && e.file) add(e.file, name); });
+    }
+    function add(f, name) {
+      f = String(f).split('/').pop(); map[f] = map[f] || [];
+      if (map[f].indexOf(name) < 0) map[f].push(name);
+    }
+    Object.keys(hushSubs || {}).forEach(function (k) { mark(hushSubs[k], (hushSubs[k] && hushSubs[k].from) || k); });
+    (Array.isArray(project.opinions) ? project.opinions : []).forEach(function (o) { mark(o, o && o.from); });
+    window.HushAdmin.setPickedBy(map);
+  }
+  function hushRecordFor(c) {
+    var r = hushSubs && hushSubs[c.name];
+    var tag = c.keyHash.toLowerCase().slice(0, 8);
+    var op = (Array.isArray(project.opinions) ? project.opinions : []).filter(function (o) {
+      return o && Array.isArray(o.picks) && (o.clientTag ? o.clientTag === tag : o.from === c.name);
+    })[0];
+    if (op && (!r || !Array.isArray(r.picks) || Date.parse(op.submittedAt) > Date.parse(r.submittedAt))) r = op;
+    return r && Array.isArray(r.picks) ? r : null;
+  }
+  var hushTimer = 0;
+  function renderHushPicks() {
+    if (!hushView() || hushSubs === null) return;
+    clearTimeout(hushTimer);
+    hushTimer = setTimeout(drawHushPicks, 60);   // images load one by one: redraw once per burst
+  }
+  function drawHushPicks() {
+    var people = (Array.isArray(project.clients) ? project.clients : []).filter(function (c) { return c && c.name && typeof c.keyHash === 'string'; });
+    var rank = { decider: 0, advisor: 1 };
+    people = people.slice().sort(function (a, b) { return (rank[a.role] != null ? rank[a.role] : 2) - (rank[b.role] != null ? rank[b.role] : 2); });
+    var old = document.getElementById('hush-picks');
+    if (!people.length) { if (old) old.remove(); return; }
+    var wrap = el('section', { id: 'hush-picks', class: 'hush-picks', 'aria-labelledby': 'hp-h' });
+    var top = el('div', { class: 'hp-top' });
+    top.appendChild(el('h2', { id: 'hp-h' }, 'Client picks'));
+    top.appendChild(el('span', { class: 'hp-only' }, 'Only you see this'));
+    wrap.appendChild(top);
+    var lab = { decider: 'Decision maker', advisor: 'Advisor' };
+    people.forEach(function (c, k) {
+      var r = hushRecordFor(c);
+      var sec = el('div', { class: 'opinion hp-client' + (r ? '' : ' hp-none'), 'aria-labelledby': 'hp-c' + k, role: 'group' });
+      var head = el('div', { class: 'op-head' });
+      var h = el('h3', { id: 'hp-c' + k }, c.name + ' ');
+      h.appendChild(el('span', { class: 'hp-role' }, lab[c.role] || 'Client'));
+      head.appendChild(h);
+      head.appendChild(el('span', { class: 'op-meta' }, r ? 'Submitted ' + whenText(r.submittedAt) : 'No picks yet'));
+      sec.appendChild(head);
+      if (r) opinionBody(r, sec, false);
+      else sec.appendChild(el('p', { class: 'op-hint' }, c.name + ' hasn\u2019t submitted picks for this project yet.'));
+      wrap.appendChild(sec);
+    });
+    var list = document.getElementById('collages');
+    if (old) old.replaceWith(wrap); else list.parentNode.insertBefore(wrap, list);
+  }
   function renderOpinions() {
+    renderHushPicks();
     if (isAdvisor()) { renderMyOpinion(); return; }
     var ops = opinionsFor(); if (!ops.length) return;
     var holder = document.getElementById('opinions');
@@ -1392,6 +1477,7 @@
         Object.defineProperty(c, '_section', { value: curSec, enumerable: false, configurable: true, writable: true });
       });
       collages = ADMIN ? raw.slice() : raw.filter(function (c) { return c && !c.hidden; });
+      loadHushSubs();   // Hush: client picks previews (top of page) + Delete guard
       picks = collages.map(function () { return []; });
       lineupOrder = emptySlots();
       if (mode !== 'locked') load();
