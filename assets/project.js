@@ -1360,6 +1360,15 @@
       document.title = p.title + ' — Pick your characters · Hush Media Creations';
       document.getElementById('title').textContent = p.title;
       if (p.description) document.getElementById('desc').textContent = p.description;
+      // Optional per-project info callout ("note" in project.json), shown as plain text near the top.
+      if (typeof p.note === 'string' && p.note.trim()) {
+        var nt = document.createElement('aside');
+        nt.className = 'project-note'; nt.id = 'project-note'; nt.setAttribute('role', 'note');
+        var ni = document.createElement('span'); ni.className = 'project-note-ico'; ni.setAttribute('aria-hidden', 'true'); ni.textContent = '\u2139\ufe0f';
+        var nx = document.createElement('p'); nx.textContent = p.note.trim();
+        nt.appendChild(ni); nt.appendChild(nx);
+        var dsc = document.getElementById('desc'); dsc.parentNode.insertBefore(nt, dsc.nextSibling);
+      }
       var list = document.getElementById('collages');
       collages.forEach(function (c, i) { list.appendChild(renderCollage(c, i)); });
       if (mode === 'locked') {

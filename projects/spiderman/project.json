@@ -1,0 +1,191 @@
+{
+  "title": "Spider-Man",
+  "description": "Tap the characters you like in each collage \u2014 as many as you want. Tap again to unpick.",
+  "packSize": 8,
+  "note": "Heads up: Spider-Man is a copyrighted character, so these concept models are blank black-suit stand-ins with no logos. The final model will be proper Spider-Man when it\u2019s made.",
+  "collages": [
+    {
+      "file": "collage-1.png",
+      "options": 8,
+      "label": "Collage 1",
+      "columns": [
+        0,
+        181,
+        376,
+        555,
+        853,
+        1151,
+        1453,
+        1717,
+        2172
+      ],
+      "cropTop": 46
+    },
+    {
+      "file": "collage-2.png",
+      "options": 8,
+      "label": "Collage 2",
+      "columns": [
+        0,
+        184,
+        305,
+        551,
+        748,
+        1088,
+        1352,
+        1729,
+        2172
+      ],
+      "cropTop": 46
+    },
+    {
+      "file": "collage-3.png",
+      "options": 8,
+      "label": "Collage 3",
+      "columns": [
+        0,
+        213,
+        382,
+        585,
+        854,
+        1117,
+        1454,
+        1762,
+        2172
+      ],
+      "cropTop": 46
+    },
+    {
+      "file": "collage-4.png",
+      "options": 8,
+      "label": "Collage 4",
+      "columns": [
+        0,
+        174,
+        383,
+        665,
+        878,
+        1136,
+        1438,
+        1754,
+        2172
+      ],
+      "cropTop": 46
+    },
+    {
+      "file": "collage-5.png",
+      "options": 8,
+      "label": "Collage 5",
+      "columns": [
+        0,
+        170,
+        399,
+        619,
+        888,
+        1157,
+        1465,
+        1728,
+        2172
+      ],
+      "cropTop": 46
+    },
+    {
+      "file": "collage-6.png",
+      "options": 8,
+      "label": "Collage 6",
+      "columns": [
+        0,
+        166,
+        372,
+        600,
+        849,
+        1144,
+        1431,
+        1738,
+        2172
+      ],
+      "cropTop": 46
+    },
+    {
+      "file": "collage-7.png",
+      "options": 8,
+      "label": "Collage 7",
+      "columns": [
+        0,
+        157,
+        376,
+        588,
+        791,
+        1093,
+        1358,
+        1670,
+        2172
+      ],
+      "cropTop": 46
+    },
+    {
+      "file": "collage-8.png",
+      "options": 8,
+      "label": "Collage 8",
+      "columns": [
+        0,
+        171,
+        340,
+        582,
+        855,
+        1092,
+        1375,
+        1714,
+        2172
+      ],
+      "cropTop": 46
+    },
+    {
+      "file": "collage-9.png",
+      "options": 8,
+      "label": "Collage 9",
+      "columns": [
+        0,
+        179,
+        367,
+        592,
+        836,
+        1100,
+        1423,
+        1667,
+        2073
+      ],
+      "cropTop": 48
+    },
+    {
+      "file": "collage-10.png",
+      "options": 8,
+      "label": "Collage 10",
+      "columns": [
+        0,
+        134,
+        362,
+        576,
+        839,
+        1063,
+        1378,
+        1734,
+        2172
+      ],
+      "cropTop": 46
+    }
+  ],
+  "imageBot": "f0f8b912-ee5c-42b9-b709-d89ee8930761",
+  "clients": [
+    {
+      "name": "Julius",
+      "keyHash": "eba0120c7a0fc461bf6113b97eb52dff63eeacad660538147a7f81eba2837462",
+      "role": "decider"
+    },
+    {
+      "name": "Adam",
+      "keyHash": "e53c5db36d240e8f6160aa20e4399d6d6c2a862b8daa7eae4ac49f6e9d4b5f52",
+      "role": "advisor"
+    }
+  ]
+}

@@ -21,6 +21,8 @@ no passwords, no trackers, no external scripts. Picks are emailed through FormSu
      (reported as LOW CONFIDENCE). Always look at the overlays in
      `tools/out/<slug>-<collage>-columns.png` before publishing.
    * also sets `"cropTop"` when a header text strip is found (trimmed in crops/lineup)
+   * optional `"note"` in project.json shows a friendly blue info callout under the
+     description (plain text, e.g. Spider-Man's copyright stand-in note)
    * `--image-bot` saves `"imageBot"` so picks go back to the bot that made the project
    * Client UX (pick-cheer toasts, submit celebration, stale-page auto-reload) lives in
      shared `assets/` — the template just links them; `new_project.py` re-runs
