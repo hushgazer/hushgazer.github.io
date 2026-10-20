@@ -26,9 +26,16 @@ jobs:
           mkdir -p _site
           # Copy only what the client site needs (keeps artifact small + fast).
           shopt -s dotglob
-          for item in admin assets demo kraken lion projects index.html project.html 404.html .nojekyll; do
+          for item in admin assets projects index.html project.html 404.html .nojekyll; do
             if [ -e "$item" ]; then cp -a "$item" _site/; fi
           done
+          # Every project's clean-URL page /<slug>/ (slugs from projects/projects.json),
+          # so new projects deploy without editing this workflow.
+          for slug in $(python3 -c "import json;print(' '.join(p['slug'] for p in json.load(open('projects/projects.json'))['projects']))"); do
+            case "$slug" in *[!a-z0-9-]*|'') continue;; esac
+            if [ -f "$slug/index.html" ]; then cp -a "$slug" _site/; fi
+          done
+          ls _site
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
