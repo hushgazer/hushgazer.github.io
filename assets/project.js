@@ -1,5 +1,5 @@
 /* Hush Media Creations — client picks page.
-   Network: loads local project files; on Submit, POSTs the picks to FormSubmit (emailed to Hush Media Creations). */
+   Network: loads local project files; on Submit, POSTs the picks to the hush-picks Worker (saved) and FormSubmit (emailed to Hush Media Creations). */
 (function () {
   'use strict';
   // ==== FORMSUBMIT SETTINGS ============================================
@@ -12,6 +12,10 @@
   // Copy of every REAL (non-test) submission for Hush Media Creations' picks bot,
   // so new picks are noticed instantly. Test-mode submissions never get the copy.
   var FORM_CC = 'hushmediacreations+picks@mail.grokbot.com';
+  // Every submission is first saved by the hush-picks Cloudflare Worker (durable copy the
+  // picks bot reads directly). Then the email goes out (Worker relay, else straight from
+  // here). If the Worker is down we still email directly, so nothing is ever lost.
+  var PICKS_WORKER = 'https://hush-picks.hushgazer.workers.dev/picks';
   // =====================================================================
 
   var app = document.getElementById('app');
@@ -1258,15 +1262,38 @@
         summary: data.summary,
         payload: 'HUSHPICKS_JSON_BEGIN ' + JSON.stringify(data) + ' HUSHPICKS_JSON_END'
     };
-    if (!TEST && FORM_CC) body._cc = FORM_CC;
-    fetch(FORM_ENDPOINT, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify(body)
-    })
-      .then(function (r) {
+    function withTimeout(ms) {
+      if (typeof AbortController === 'undefined') return {};
+      var c = new AbortController(); setTimeout(function () { c.abort(); }, ms); return { signal: c.signal };
+    }
+    function viaWorker() {
+      if (!PICKS_WORKER) return Promise.resolve(null);
+      var o = withTimeout(10000);
+      return fetch(PICKS_WORKER, Object.assign({
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+      }, o)).then(function (r) {
+        return r.json().catch(function () { return {}; }).then(function (j) { return (r.ok && j.ok) ? j : null; });
+      }).catch(function () { return null; });
+    }
+    function viaFormSubmit() {
+      var direct = Object.assign({}, body);
+      if (!TEST && FORM_CC) direct._cc = FORM_CC;
+      return fetch(FORM_ENDPOINT, Object.assign({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify(direct)
+      }, withTimeout(20000))).then(function (r) {
         return r.json().catch(function () { return {}; }).then(function (j) {
           if (!r.ok || !(j.success === true || j.success === 'true')) throw new Error(j.message || ('HTTP ' + r.status));
+        });
+      });
+    }
+    viaWorker()
+      .then(function (w) {
+        if (w && w.relayed) return;                 // saved + emailed by the Worker
+        return viaFormSubmit().catch(function (err) {
+          if (w && w.stored) return;                // email failed but the Worker saved it: still counts
+          throw err;
         });
       })
       .then(function () { sending = false; rememberSent(data); showThanks(data); })

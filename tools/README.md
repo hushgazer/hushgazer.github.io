@@ -86,6 +86,16 @@ no passwords, no trackers, no external scripts. Picks are emailed through FormSu
   (hushgazer@gmail.com) **and** is copied via FormSubmit `_cc` to
   `hushmediacreations+picks@mail.grokbot.com` (Hush Media Creations' bot inbox) so the
   picks are noticed instantly. Change `FORM_CC` in `assets/project.js` to update it.
+* **hush-picks Worker** (`https://hush-picks.hushgazer.workers.dev`, source `/workspace/hush-picks`,
+  deploy `CLOUDFLARE_API_TOKEN=$(cat tools/private/cloudflare-api-token.txt) wrangler deploy`):
+  Submit first POSTs the same form body to `/picks` (Origin must be `https://hushgazer.github.io`,
+  ≤96 KB, HUSHPICKS markers + valid JSON, 20/hour/IP). Every submission is stored in KV
+  (`hush-picks-SUBMISSIONS`, key `s:<ISO>:<id>`). FormSubmit 429s Cloudflare IPs, so the Worker
+  relay is off (`RELAY_FORMSUBMIT="0"`) and the browser then emails via FormSubmit as before.
+  Worker down → direct email only; email fails but Worker stored → still "sent".
+  Read: `GET /picks?since=<ISO|cursor>&limit=50&test=0&meta=1`, `GET /picks/<id>`, header
+  `Authorization: Bearer $(cat tools/private/picks-read-token.txt)` (Worker secret `READ_TOKEN`).
+  Helper: `python3 tools/fetch_picks.py` (new real submissions since last run → payload JSON files).
 * **Picks-watcher** (routine): reads new "Hush picks:" emails, extracts the JSON between
   `HUSHPICKS_JSON_BEGIN` and `HUSHPICKS_JSON_END`, and
   * **skips** any email whose subject contains `[TEST]` or whose payload has `test: true`
