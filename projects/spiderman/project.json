@@ -19,7 +19,8 @@
         1717,
         2172
       ],
-      "cropTop": 46
+      "cropTop": 46,
+      "section": "Batch 1"
     },
     {
       "file": "collage-2.png",
@@ -173,6 +174,108 @@
         2172
       ],
       "cropTop": 46
+    },
+    {
+      "file": "collage-11.jpg",
+      "options": 8,
+      "label": "Collage 11",
+      "columns": [
+        0,
+        122,
+        332,
+        479,
+        697,
+        871,
+        1138,
+        1427,
+        1792
+      ],
+      "cropTop": 62,
+      "section": "Batch 2 \u2014 More accurate, lower image quality",
+      "sectionNote": "New set: closer to the real Spider-Man look, but the images are lower resolution."
+    },
+    {
+      "file": "collage-12.jpg",
+      "options": 8,
+      "label": "Collage 12",
+      "columns": [
+        0,
+        137,
+        318,
+        498,
+        663,
+        898,
+        1119,
+        1379,
+        1792
+      ],
+      "cropTop": 58
+    },
+    {
+      "file": "collage-13.jpg",
+      "options": 8,
+      "label": "Collage 13",
+      "columns": [
+        0,
+        157,
+        345,
+        529,
+        717,
+        948,
+        1215,
+        1422,
+        1792
+      ],
+      "cropTop": 55
+    },
+    {
+      "file": "collage-14.jpg",
+      "options": 8,
+      "label": "Collage 14",
+      "columns": [
+        0,
+        180,
+        332,
+        505,
+        713,
+        918,
+        1214,
+        1453,
+        1792
+      ]
+    },
+    {
+      "file": "collage-15.jpg",
+      "options": 7,
+      "label": "Collage 15",
+      "columns": [
+        0,
+        177,
+        325,
+        552,
+        836,
+        1111,
+        1420,
+        1792
+      ],
+      "cropTop": 59
+    },
+    {
+      "file": "collage-16.jpg",
+      "options": 8,
+      "label": "Collage 16",
+      "columns": [
+        0,
+        149,
+        306,
+        499,
+        700,
+        936,
+        1164,
+        1400,
+        1792
+      ],
+      "cropTop": 50
     }
   ],
   "imageBot": "f0f8b912-ee5c-42b9-b709-d89ee8930761",

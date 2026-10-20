@@ -931,7 +931,7 @@
     var frame = el('div', { class: 'frame', role: 'group', 'aria-label': label + ': tap characters to pick (tap again to unpick)' });
     // Display: WebP when present (smaller), PNG fallback. Crops always use full-quality PNG master.
     var pngSrc = root + 'projects/' + slug + '/' + c.file;
-    var webpSrc = pngSrc.replace(/\.png$/i, '.webp');
+    var webpSrc = pngSrc.replace(/\.(png|jpe?g)$/i, '.webp');
     var picture = el('picture');
     picture.appendChild(el('source', { type: 'image/webp', srcset: webpSrc }));
     var display = el('img', {
@@ -1380,6 +1380,17 @@
       packSize = (ps >= 1 && ps === (ps | 0) && ps <= 40) ? ps : 8;
       // Clients never see collages marked hidden in project.json; admin still does (greyed).
       var raw = p.collages || [];
+      // Optional batch/section dividers: a collage with "section": "Heading" (and optional
+      // "sectionNote") starts a new section; later collages inherit it until the next one.
+      // Resolved before hiding so a hidden first collage never drops its section's heading.
+      var curSec = null;
+      raw.forEach(function (c) {
+        if (!c) return;
+        if (typeof c.section === 'string' && c.section.trim()) {
+          curSec = { title: c.section.trim(), note: typeof c.sectionNote === 'string' ? c.sectionNote.trim() : '' };
+        }
+        Object.defineProperty(c, '_section', { value: curSec, enumerable: false, configurable: true, writable: true });
+      });
       collages = ADMIN ? raw.slice() : raw.filter(function (c) { return c && !c.hidden; });
       picks = collages.map(function () { return []; });
       lineupOrder = emptySlots();
@@ -1397,7 +1408,20 @@
         var dsc = document.getElementById('desc'); dsc.parentNode.insertBefore(nt, dsc.nextSibling);
       }
       var list = document.getElementById('collages');
-      collages.forEach(function (c, i) { list.appendChild(renderCollage(c, i)); });
+      var lastSec = null, secN = 0;
+      collages.forEach(function (c, i) {
+        if (c._section && c._section !== lastSec) {
+          lastSec = c._section; secN++;
+          var dv = document.createElement('div');
+          dv.className = 'section-divider'; dv.setAttribute('role', 'separator');
+          if (secN > 1) dv.classList.add('section-divider-next');
+          var dh = document.createElement('h2'); dh.className = 'section-title'; dh.textContent = c._section.title;
+          dv.appendChild(dh);
+          if (c._section.note) { var dn = document.createElement('p'); dn.className = 'section-note'; dn.textContent = c._section.note; dv.appendChild(dn); }
+          list.appendChild(dv);
+        }
+        list.appendChild(renderCollage(c, i));
+      });
       if (mode === 'locked') {
         app.classList.add('locked');
         document.querySelector('.bar').classList.add('locked-bar');

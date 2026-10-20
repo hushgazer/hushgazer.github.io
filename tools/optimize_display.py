@@ -27,7 +27,7 @@ METHOD = 4  # good compression vs speed
 
 
 def webp_path(png: str) -> str:
-    base, _ = os.path.splitext(png)
+    base, _ = os.path.splitext(png)   # works for .png and .jpg/.jpeg masters
     return base + '.webp'
 
 
@@ -64,7 +64,7 @@ def project_pngs(slug: str) -> list[str]:
         return []
     return sorted(
         os.path.join(d, f) for f in os.listdir(d)
-        if f.lower().endswith('.png') and f.lower().startswith('collage')
+        if f.lower().endswith(('.png', '.jpg', '.jpeg')) and f.lower().startswith('collage')
     )
 
 
