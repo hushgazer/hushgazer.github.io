@@ -160,6 +160,126 @@
         2172
       ],
       "part": "peds"
+    },
+    {
+      "file": "collage-11.png",
+      "options": 6,
+      "label": "Statue 1",
+      "part": "statue",
+      "columns": [
+        0,
+        344,
+        751,
+        1085,
+        1432,
+        1808,
+        2172
+      ]
+    },
+    {
+      "file": "collage-12.png",
+      "options": 6,
+      "label": "Statue 2",
+      "part": "statue",
+      "columns": [
+        0,
+        432,
+        774,
+        1114,
+        1483,
+        1784,
+        2172
+      ]
+    },
+    {
+      "file": "collage-13.png",
+      "options": 6,
+      "label": "Statue 3",
+      "part": "statue",
+      "columns": [
+        0,
+        382,
+        688,
+        1099,
+        1492,
+        1837,
+        2172
+      ]
+    },
+    {
+      "file": "collage-14.png",
+      "options": 6,
+      "label": "Statue 4",
+      "part": "statue",
+      "columns": [
+        0,
+        410,
+        715,
+        1097,
+        1472,
+        1838,
+        2172
+      ]
+    },
+    {
+      "file": "collage-15.png",
+      "options": 6,
+      "label": "Statue 5",
+      "part": "statue",
+      "columns": [
+        0,
+        421,
+        822,
+        1130,
+        1466,
+        1823,
+        2170
+      ]
+    },
+    {
+      "file": "collage-16.png",
+      "options": 6,
+      "label": "Statue 6",
+      "part": "statue",
+      "columns": [
+        0,
+        433,
+        759,
+        1100,
+        1438,
+        1804,
+        2172
+      ]
+    },
+    {
+      "file": "collage-17.png",
+      "options": 6,
+      "label": "Statue 7",
+      "part": "statue",
+      "columns": [
+        0,
+        336,
+        776,
+        1121,
+        1462,
+        1844,
+        2172
+      ]
+    },
+    {
+      "file": "collage-18.png",
+      "options": 6,
+      "label": "Statue 8",
+      "part": "statue",
+      "columns": [
+        0,
+        447,
+        807,
+        1213,
+        1510,
+        1844,
+        2172
+      ]
     }
   ],
   "clients": [

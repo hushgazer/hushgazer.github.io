@@ -2,7 +2,7 @@
 pages are served from the local files as if live; FormSubmit + the picks Worker are mocked.
    python3 -m http.server 8765 &  python3 tools/test_parts.py
 Checks: 7-ped hard limit + toast, Peds/Statue tabs, "coming soon" placeholder + Submit guard
-while there are no statue collages, then (with a statue collage injected) statue slot, payload
+while there are no statue collages, then (real statue collages) statue slot, payload
 statueLineup/part fields, publish_opinion.py + make_picks_sheet.py on that payload."""
 import json, os, re, subprocess, sys, tempfile
 from playwright.sync_api import sync_playwright
@@ -21,9 +21,8 @@ def serve(inject_statue):
         if path == '' or path.endswith('/'): fp = os.path.join(fp, 'index.html')
         if not os.path.isfile(fp): return route.fulfill(status=404, body='nf')
         body = open(fp, 'rb').read()
-        if inject_statue and path == 'projects/super-sonic/project.json':
-            d = json.loads(body); s = dict(d['collages'][-1]); s['part'] = 'statue'; s.pop('label', None)
-            d['collages'].append(s); body = json.dumps(d).encode()
+        if not inject_statue and path == 'projects/super-sonic/project.json':   # simulate "no statue images yet"
+            d = json.loads(body); d['collages'] = [c for c in d['collages'] if c.get('part') != 'statue']; body = json.dumps(d).encode()
         ct = {'.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.json': 'application/json',
               '.svg': 'image/svg+xml', '.png': 'image/png', '.webp': 'image/webp'}.get(os.path.splitext(fp)[1], 'application/octet-stream')
         route.fulfill(body=body, content_type=ct)
@@ -47,7 +46,7 @@ with sync_playwright() as p:
         pg.goto(LIVE + 'super-sonic/'); pg.wait_for_selector('#collage-10 .opt'); pg.wait_for_selector('#part-tabs')
         return c, pg
 
-    # A) real config: 7 peds, statue part with no statue collages yet
+    # A) 7 peds, statue part with its statue collages stripped (the "coming soon" state)
     ctx, pg = page(False)
     assert pg.locator('#bar-thumbs .bar-slot[data-idx]').count() == 7
     assert pg.locator('#bar-thumbs .bar-slot-statue').count() == 1
@@ -69,15 +68,20 @@ with sync_playwright() as p:
     assert pg.locator('#bar-thumbs .bar-slot[data-idx].preview-card').count() == 7, 'draft restored'
     ctx.close()
 
-    # B) a statue collage present: pick it, submit, check payload
+    # B) the real project (statue collages 11-18): pick one, submit, check payload
     ctx, pg = page(True)
-    assert pg.locator('#collages .collage[data-part="statue"]').count() == 1
+    NS = len([c for c in CFG['collages'] if c.get('part') == 'statue'])
+    assert NS >= 1 and pg.locator('#collages .collage[data-part="statue"]').count() == NS
+    assert pg.locator('#statue-soon').count() == 0
     for i in range(1, 4): pg.click('#collage-%d .opt[data-opt="1"]' % i)
     pg.click('#submit'); pg.wait_for_timeout(300)
     assert pg.get_attribute('#app', 'data-view') == 'statue' and 'pick your statue' in pg.text_content('#hush-pick-toast').lower() and not posts
     assert 'Statue 1' in pg.text_content('#collage-11 h2')
     pg.click('#collage-11 .opt[data-opt="3"]'); pg.click('#collage-11 .opt[data-opt="4"]')
     assert pg.get_attribute('#collage-11 .opt[data-opt="4"]', 'aria-pressed') == 'false', 'only 1 statue'
+    if NS > 1:
+        pg.click('#collage-12 .opt[data-opt="1"]')
+        assert pg.get_attribute('#collage-12 .opt[data-opt="1"]', 'aria-pressed') == 'false', 'only 1 statue overall'
     assert pg.locator('#bar-thumbs .bar-slot-statue.preview-card').count() == 1
     pg.wait_for_timeout(2300)
     pg.click('#submit'); pg.wait_for_selector('#hush-celebrate')
@@ -93,7 +97,6 @@ with sync_playwright() as p:
     with tempfile.TemporaryDirectory() as tmp:
         os.makedirs(tmp + '/projects/super-sonic')
         cfg = json.load(open(os.path.join(R, 'projects/super-sonic/project.json')))
-        s = dict(cfg['collages'][-1]); s['part'] = 'statue'; cfg['collages'].append(s)
         json.dump(cfg, open(tmp + '/projects/super-sonic/project.json', 'w'))
         for c in cfg['collages']:
             src = os.path.join(R, 'projects/super-sonic', c['file']); dst = tmp + '/projects/super-sonic/' + c['file']
