@@ -144,5 +144,17 @@
         2172
       ]
     }
+  ],
+  "clients": [
+    {
+      "name": "Julius",
+      "keyHash": "59877a907579cb304172861ca98dcb80a6046120c019d0ffaff1466765be81a5",
+      "role": "decider"
+    },
+    {
+      "name": "Adam",
+      "keyHash": "9c414ce2fba8a95e4fa30b1cd95cb48ac1ce5eeb81205cf292a8483d9383006d",
+      "role": "advisor"
+    }
   ]
 }
