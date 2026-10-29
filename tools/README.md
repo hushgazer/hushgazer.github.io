@@ -88,6 +88,42 @@ no passwords, no trackers, no external scripts. Picks are emailed through FormSu
   sheet tools.
 * Subject: `Hush picks: <Title> - <Client> #<clientTag> (<slug>)`.
 
+## 3a. Peds count + Statue prop (per project, `"parts"` in project.json)
+
+Set it in `projects/<slug>/project.json` (no code change, no rebuild needed):
+
+```json
+"packSize": 7,
+"parts": {"peds": {"slots": 7}, "statue": {"slots": 1}},
+"collages": [
+  {"file": "collage-1.png", "options": 6, "part": "peds"},
+  {"file": "statue-1.png",  "options": 4, "part": "statue"}
+]
+```
+
+* **7 vs 8 peds**: change `parts.peds.slots` (keep `packSize` the same number for old tools).
+  With `"parts"` set the limit is **hard**: a client can't pick more than that many peds
+  (friendly "That's all 7 peds! Tap × on one to swap" toast).
+* **Statue on**: `"statue": {"slots": 1}` → sticky **1 Peds / 2 Statue prop** tabs at the top,
+  a separate `S1` statue slot in the bottom bar, and a **Submit guard**: Submit with no statue
+  picked does not send — it shows "Almost done! Pick your statue next" and opens the Statue tab.
+* **Statue off**: leave `"statue"` out (or `"statue": {"slots": 0}`): no tabs, no guard,
+  Submit works as before. Just `"parts": {"peds": {"slots": 8}}` = hard 8-ped limit, no statue.
+* **No `"parts"` at all** = exactly the old behaviour (`packSize` slots, extra picks allowed
+  but they don't get a slot).
+* Collages: `"part": "statue"` puts a collage on the Statue tab (auto label "Statue 1", "Statue 2"…);
+  missing `"part"` = peds. Add statue collages later like any collage (WebP is automatic).
+* Statue part but **no statue collages yet** → the Statue tab shows "Statue prop options coming
+  soon". Submit stays blocked (the guard opens that tab) so nobody sends a pack without a statue;
+  ped picks stay saved in the browser until the statue images are up.
+* Payload (only for parts projects): `picks[].part` = `"peds"|"statue"`, `parts: {peds, statue}`,
+  `lineup`/`packSize` = the PED pack (unchanged shape), plus `statueSlots` and
+  `statueLineup: [{collage, file, option, previewIndex, part:"statue"} | null]`; `summary` ends
+  with `Statue #1 Collage X option Y`. `publish_opinion.py` keeps `statueSlots`/`statueLineup`
+  in submissions.json (Hush's previews show a separate Statue row; delete guard covers it) and
+  `make_picks_sheet.py` adds "Statue 1 · Collage X - option Y" tiles after the ped pack.
+* Test: `python3 tools/test_parts.py` (server on :8765).
+
 ## 4. Test mode (Hush only) and the picks-watcher
 
 * Add `?test=1` to any project URL (works with `?c=`): orange banner

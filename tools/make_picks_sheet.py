@@ -11,7 +11,8 @@ Payload (schema hush-picks/v1 or v2): {"project": slug, "picks": [{"collage",
 collage images at native resolution (no downscaling). When "lineup" is present, tiles follow that fixed pack order (#1…#N);
 null / empty entries render as "NEW / remake requested". Otherwise collage order.
 Each tile is labeled "#N · Collage X - option Y" (or without # when no lineup).
-Optional "packSize" pads the lineup with NEW slots. If a crop is missing it is recomputed from project.json. Multiple
+Optional "packSize" pads the lineup with NEW slots. Optional "statueLineup" (projects
+with a statue part) adds "Statue N · Collage X - option Y" tiles after the ped pack. If a crop is missing it is recomputed from project.json. Multiple
 picks on one collage produce multiple tiles + marked copies.
 
 Also writes one MARKED copy per selected character to
@@ -131,6 +132,12 @@ def main():
         if pack_size and len(ordered) < pack_size:
             for i in range(len(ordered), pack_size):
                 ordered.append(("new", i + 1))
+        # Projects with a statue part: statue slot(s) follow the ped pack, labelled "Statue".
+        for i, e in enumerate(data.get("statueLineup") or []):
+            try:
+                ordered.append(("pick", int(e["collage"]), int(e["option"]), i + 1, "statue"))
+            except (KeyError, TypeError, ValueError, AttributeError):
+                ordered.append(("new", i + 1, "statue"))
     else:
         for p in sorted(data["picks"], key=lambda p: p["collage"]):
             for opt in selected_opts(p):
@@ -152,11 +159,12 @@ def main():
     tiles = []
     img_cache = {}
     for entry in ordered:
+        statue = entry[-1] == "statue"
         if entry[0] == "new":
             pi = entry[1]
-            tiles.append((None, f"#{pi} · NEW / remake requested"))
+            tiles.append((None, f"Statue {pi} · not picked" if statue else f"#{pi} · NEW / remake requested"))
             continue
-        _, collage, opt, preview = entry
+        _, collage, opt, preview = entry[:4]
         p = by_collage.get(collage)
         if not p: continue
         path = resolve(a.root, pdir, p["file"])
@@ -167,7 +175,8 @@ def main():
         boxes = {o: c for o, c in crop_entries(p, pj, im)}
         c = boxes.get(opt)
         if not c: continue
-        label = (f"#{preview} · Collage {collage} - option {opt}" if preview
+        label = (f"Statue {preview} · Collage {collage} - option {opt}" if statue
+                 else f"#{preview} · Collage {collage} - option {opt}" if preview
                  else f"Collage {collage} - option {opt}")
         tiles.append((im.crop((c["x"], c["y"], c["x"] + c["w"], c["y"] + c["h"])), label))
     if not any(t is not None for t, _ in tiles): raise SystemExit("no selected characters in payload")

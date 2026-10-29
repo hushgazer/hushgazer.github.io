@@ -16,7 +16,10 @@ projects/<slug>/submissions.json, keyed by client name, newest wins:
     {"clients": {"Julius": {"from": "Julius", "role": "decider", "clientTag": "...",
         "submittedAt": "...", "overall": "", "packSize": 8,
         "picks": [{"collage": 1, "file": "collage-2.png", "option": 3 or [2,5], "note": "..."}],
-        "lineup": [{"collage": 6, "file": "collage-7.png", "option": 1}, ..., null]}}}
+        "lineup": [{"collage": 6, "file": "collage-7.png", "option": 1}, ..., null],
+        "statueSlots": 1, "statueLineup": [{"collage": 11, "file": "statue-1.png", "option": 2}]}}}
+("statueSlots"/"statueLineup" only for projects with a "parts".statue config; picks[]
+then also carry "part": "peds"|"statue". "lineup"/"packSize" are always the PED pack.)
 Only Hush's admin view loads submissions.json (the "Client picks" previews at the
 top of each project page). It is still a public file on GitHub Pages, like project.json.
 
@@ -55,19 +58,26 @@ def build_record(d, cfg, slug):
         if not opts and not p.get('note'): continue   # nothing picked on this collage
         e = {'collage': c, 'file': f, 'option': opts[0] if len(opts) == 1 else opts}
         if p.get('note'): e['note'] = str(p['note'])[:500]
+        if p.get('part') in ('peds', 'statue'): e['part'] = p['part']
         picks.append(e)
-    lineup = []
-    for e in d.get('lineup') or []:
-        if not e: lineup.append(None); continue
-        c = int(e['collage']); f, cc = resolve(c); o = int(e['option'])
-        if o < 1 or (cc and o > int(cc['options'])): sys.exit(f'bad lineup slot {e}')
-        lineup.append({'collage': c, 'file': f, 'option': o})
+    def slots(key):
+        out = []
+        for e in d.get(key) or []:
+            if not e: out.append(None); continue
+            c = int(e['collage']); f, cc = resolve(c); o = int(e['option'])
+            if o < 1 or (cc and o > int(cc['options'])): sys.exit(f'bad {key} slot {e}')
+            out.append({'collage': c, 'file': f, 'option': o})
+        return out
+    lineup = slots('lineup')                 # ped pack (or the whole pack on projects without parts)
+    statue = slots('statueLineup')           # projects with a "parts".statue config
     rec = {'from': who['name'], 'role': who.get('role', 'client'), 'clientTag': tag,
            'submittedAt': d.get('submittedAt'),
            'overall': str(d.get('opinion') or d.get('note') or '')[:2000],
            'picks': sorted(picks, key=lambda e: e['collage'])}
     if lineup:
         rec['packSize'] = int(d.get('packSize') or len(lineup)); rec['lineup'] = lineup
+    if statue:
+        rec['statueSlots'] = int(d.get('statueSlots') or len(statue)); rec['statueLineup'] = statue
     return who, rec
 
 
@@ -102,6 +112,8 @@ def main():
     role = who.get('role', 'client')
     if a.role and role != a.role: sys.exit(f"{who['name']} is not a {a.role} (role={role})")
     slots = len(rec.get('lineup', []))
+    if rec.get('statueLineup'):
+        print(f"statue: {sum(1 for e in rec['statueLineup'] if e)} of {len(rec['statueLineup'])} statue slot(s) picked")
     # 1) Hush's admin previews: submissions.json (every role).
     sj = os.path.join(pdir, 'submissions.json')
     subs = json.load(open(sj)) if os.path.exists(sj) else {}

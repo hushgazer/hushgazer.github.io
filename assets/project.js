@@ -23,7 +23,20 @@
   var slug = app.getAttribute('data-slug') || new URLSearchParams(location.search).get('p') || '';
   var picks = [];      // picks[i] = sorted array of option numbers (1-based); [] = none
   var lineupOrder = []; // fixed-length pack slots: [{c,o}|null, ...] length = packSize
-  var packSize = 8;    // from project.json packSize/slots (default 8)
+  var packSize = 8;    // from project.json packSize/slots (default 8); parts.peds.slots wins
+  // ==== PARTS (optional, per project) ==================================
+  // project.json "parts": {"peds": {"slots": 7}, "statue": {"slots": 1}}
+  // Collages carry "part": "peds" | "statue" (default "peds"). With "parts" set,
+  // the ped pick limit is HARD (no more than peds.slots picks). A "statue" part adds
+  // Peds / Statue tabs at the top, its own statue slot(s) in the bar, and a Submit
+  // guard (no submit until a statue is picked). No "parts" -> exactly the old behaviour.
+  var parts = null;       // null = legacy project
+  var statueSlots = 0;    // 0 = no statue part
+  var statueOrder = [];   // [{c,o}|null] x statueSlots
+  var view = 'peds';      // current tab when the project has a statue part
+  function hasStatue() { return !!parts && statueSlots > 0; }
+  function partOf(i) { var c = collages[i]; return hasStatue() && c && c.part === 'statue' ? 'statue' : 'peds'; }
+  function statueCount() { var n = 0; collages.forEach(function (c, i) { if (partOf(i) === 'statue') n++; }); return n; }
   var collages = [];   // config
   var imgs = [];       // PNG Image() used for crop math / lineup / payload (masters)
   var project = null;
@@ -130,7 +143,7 @@
 
   function save() {
     try {
-      localStorage.setItem(storeKey, JSON.stringify({ picks: picks, lineup: lineupOrder, packSize: packSize, files: collageFiles() }));
+      localStorage.setItem(storeKey, JSON.stringify({ picks: picks, lineup: lineupOrder, packSize: packSize, statue: hasStatue() ? statueOrder : undefined, files: collageFiles() }));
       if (isAdvisor()) localStorage.setItem(storeKey + ':notes', JSON.stringify({ notes: notes, overall: document.getElementById('overall').value, files: collageFiles() }));
     } catch (e) {}
   }
@@ -143,8 +156,37 @@
     return [];
   }
   function lineupKey(e) { return e && e.c != null ? (e.c + ':' + e.o) : ''; }
-  function emptySlots() {
-    var a = []; for (var i = 0; i < packSize; i++) a.push(null); return a;
+  function emptySlots(n) {
+    var a = []; n = n == null ? packSize : n; for (var i = 0; i < n; i++) a.push(null); return a;
+  }
+  function emptyIn(order) { for (var i = 0; i < order.length; i++) if (!order[i]) return i; return -1; }
+  function statueFilled() { var n = 0; statueOrder.forEach(function (e) { if (e) n++; }); return n; }
+  // Statue slots: saved entries first (if still valid statue picks), then any missing statue picks.
+  function normalizeStatue(raw) {
+    var out = emptySlots(statueSlots);
+    if (!statueSlots) return out;
+    function ok(c, o) { return c >= 0 && c < collages.length && partOf(c) === 'statue' && (picks[c] || []).indexOf(o) >= 0; }
+    function placed(c, o) { return out.some(function (x) { return x && x.c === c && x.o === o; }); }
+    (Array.isArray(raw) ? raw : []).forEach(function (e, j) {
+      if (j >= statueSlots || !e) return;
+      var c = Number(e.c), o = Number(e.o);
+      if (ok(c, o) && !placed(c, o)) out[j] = { c: c, o: o };
+    });
+    picks.forEach(function (sel, c) {
+      (sel || []).forEach(function (o) {
+        if (ok(c, o) && !placed(c, o)) { var k = out.indexOf(null); if (k >= 0) out[k] = { c: c, o: o }; }
+      });
+    });
+    return out;
+  }
+  // Parts projects: a pick that has no slot (e.g. an old draft from a bigger pack) is dropped,
+  // so the hard limit always holds.
+  function prunePicks() {
+    if (!parts) return;
+    picks = picks.map(function (sel, c) {
+      var order = partOf(c) === 'statue' ? statueOrder : lineupOrder;
+      return (sel || []).filter(function (o) { return order.some(function (e) { return e && e.c === c && e.o === o; }); });
+    });
   }
   function firstEmptySlot() {
     for (var i = 0; i < lineupOrder.length; i++) if (!lineupOrder[i]) return i;
@@ -165,6 +207,7 @@
     // Migrate dense picks → fill first pack slots in collage order; pad with nulls.
     var out = emptySlots(), i = 0;
     picks.forEach(function (sel, ci) {
+      if (partOf(ci) !== 'peds') return;
       (sel || []).forEach(function (o) {
         if (i < packSize) out[i++] = { c: ci, o: o };
       });
@@ -180,7 +223,7 @@
       if (e == null) { dense.push(null); return; }
       var c = Number(e.c), o = Number(e.o);
       if (!(c >= 0 && c < collages.length && o >= 1)) return;
-      if ((picks[c] || []).indexOf(o) < 0) return;
+      if ((picks[c] || []).indexOf(o) < 0 || partOf(c) !== 'peds') return;
       var k = c + ':' + o;
       if (seen[k]) return;
       seen[k] = 1; dense.push({ c: c, o: o });
@@ -204,6 +247,7 @@
       });
       // Append any picks missing from saved slots into first empties
       picks.forEach(function (sel, i) {
+        if (partOf(i) !== 'peds') return;
         (sel || []).forEach(function (o) {
           var placed = out.some(function (e) { return e && e.c === i && e.o === o; });
           if (!placed) {
@@ -259,7 +303,7 @@
       var raw = JSON.parse(localStorage.getItem(storeKey));
       if (raw && !Array.isArray(raw) && Array.isArray(raw.picks)) {
         var map = remapIndex(raw.files);
-        if (map) { raw.picks = remapArray(raw.picks, map); raw.lineup = remapLineup(raw.lineup, map); var resave = true; }
+        if (map) { raw.picks = remapArray(raw.picks, map); raw.lineup = remapLineup(raw.lineup, map); raw.statue = remapLineup(raw.statue, map); var resave = true; }
       }
       if (Array.isArray(raw) && raw.length === collages.length) {
         // legacy: picks-only array
@@ -270,7 +314,9 @@
         while (picks.length < collages.length) picks.push([]);
         picks = picks.slice(0, collages.length);
         lineupOrder = normalizeLineup(raw.lineup);
+        statueOrder = normalizeStatue(raw.statue);
       }
+      if (parts) { statueOrder = normalizeStatue(statueOrder); prunePicks(); }
     } catch (e) {}
     if (isAdvisor()) {
       try {
@@ -295,9 +341,10 @@
     });
     sec.querySelectorAll('.nums span').forEach(function (s, k) { s.classList.toggle('sel', sel.indexOf(k + 1) >= 0); });
     var st = sec.querySelector('.status');
-    st.textContent = sel.length ? ('Picked: ' + fmtOpts(sel) + ' · tap again to unpick') : 'Not picked yet · tap to pick (as many as you want)';
+    st.textContent = sel.length ? ('Picked: ' + fmtOpts(sel) + ' · tap again to unpick') : pickPrompt();
     st.classList.toggle('done', sel.length > 0);
   }
+  function pickPrompt() { return parts ? 'Not picked yet · tap to pick' : 'Not picked yet · tap to pick (as many as you want)'; }
   // Tiny non-blocking toast when the client SELECTs a character (not on deselect).
   var PICK_CHEERS = [
     { t: 'Awesome!', e: '\ud83d\udd25' },
@@ -308,12 +355,12 @@
     { t: 'Yes!', e: '\ud83d\udcaa' },
     { t: 'Solid!', e: '\ud83d\ude0e' }
   ];
-  function flashPickToast(originEl) {
+  function flashPickToast(originEl, msg, ms) {
     var prev = document.getElementById('hush-pick-toast');
     if (prev) prev.remove();
-    var cheer = PICK_CHEERS[Math.floor(Math.random() * PICK_CHEERS.length)];
+    var cheer = msg || PICK_CHEERS[Math.floor(Math.random() * PICK_CHEERS.length)];
     var toast = el('div', {
-      id: 'hush-pick-toast', class: 'pick-toast', role: 'status', 'aria-live': 'polite'
+      id: 'hush-pick-toast', class: 'pick-toast' + (msg ? ' pick-toast-msg' : ''), role: 'status', 'aria-live': 'polite'
     });
     toast.appendChild(el('span', { class: 'pick-toast-emoji', 'aria-hidden': 'true' }, cheer.e));
     toast.appendChild(el('span', { class: 'pick-toast-text' }, cheer.t));
@@ -322,7 +369,7 @@
     try {
       if (originEl && originEl.getBoundingClientRect) {
         var r = originEl.getBoundingClientRect();
-        var tw = 160, th = 44;
+        var tw = msg ? Math.min(340, window.innerWidth - 16) : 160, th = 44;
         var left = Math.round(r.left + r.width / 2 - tw / 2);
         var top = Math.round(r.top - th - 8);
         if (top < 8) top = Math.round(r.bottom + 8);
@@ -339,22 +386,33 @@
       toast.classList.remove('in');
       toast.classList.add('out');
       setTimeout(function () { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 220);
-    }, 820);
+    }, ms || 820);
+  }
+  // Parts projects: friendly stop when the ped (or statue) slots are all used.
+  function limitToast(originEl, statue) {
+    var msg = statue
+      ? { t: statueSlots === 1 ? 'You picked your statue! Tap \u00d7 on it to swap' : 'All ' + statueSlots + ' statues picked! Tap \u00d7 to swap', e: '\ud83d\uddff' }
+      : { t: 'That\u2019s all ' + packSize + ' peds! Tap \u00d7 on one to swap', e: '\ud83d\ude4c' };
+    flashPickToast(originEl, msg, 2200);
+    flashBarHint(statue ? 'Statue slot full \u2014 tap \u00d7 to swap' : 'All ' + packSize + ' ped slots full \u2014 tap \u00d7 to swap');
   }
 
   // Multi-select: tap to pick (fills first empty pack slot), tap again to unpick
   // (clears that character from any slot). Pack slots keep fixed length / holes.
   function togglePick(i, opt, originEl) {
     var cur = (picks[i] || []).slice();
-    var idx = cur.indexOf(opt);
+    var idx = cur.indexOf(opt), isStatue = partOf(i) === 'statue';
     if (idx >= 0) {
       cur.splice(idx, 1);
-      clearCharacterFromSlots(i, opt);
+      if (isStatue) statueOrder = statueOrder.map(function (e) { return e && e.c === i && e.o === opt ? null : e; });
+      else clearCharacterFromSlots(i, opt);
     } else {
+      var order = isStatue ? statueOrder : lineupOrder;
+      var slot = emptyIn(order);
+      if (slot < 0 && parts) { limitToast(originEl || null, isStatue); return; }   // hard limit
       cur.push(opt);
-      var slot = firstEmptySlot();
       if (slot >= 0) {
-        lineupOrder[slot] = { c: i, o: opt };
+        order[slot] = { c: i, o: opt };
       } else {
         // Pack full: keep collage pick, briefly hint — don't overwrite a slot.
         flashBarHint('Pack full — clear a slot (\u00d7) or drag to swap');
@@ -369,6 +427,7 @@
   function setPick(i, opts) {   // restore from storage: opts = number | number[] | null
     picks[i] = normalizeSlot(opts);
     lineupOrder = normalizeLineup(lineupOrder);
+    statueOrder = normalizeStatue(statueOrder);
     save();
     syncCollageUI(i);
   }
@@ -389,6 +448,13 @@
     renderSummary();
   }
 
+  function clearStatueSlot(idx) {
+    var e = statueOrder[idx]; if (!e) return;
+    statueOrder[idx] = null;
+    if (picks[e.c]) picks[e.c] = picks[e.c].filter(function (o) { return o !== e.o; });
+    save(); syncCollageUI(e.c); renderSummary();
+  }
+
   // ==== DECIDER / ADVISOR =================================================
   // clients[].role: "decider" (makes the final picks) or "advisor" (gives an
   // opinion). Advisors get a note box per collage + an overall opinion box.
@@ -407,7 +473,14 @@
   // (files keep their old numbers; emails/opinions always count by position).
   function collageLabel(c, i) {
     var l = c && c.label;
-    return (!l || /^collage\s*\d+$/i.test(String(l).trim())) ? 'Collage ' + (i + 1) : l;
+    if (!l || /^(collage|statue)\s*\d+$/i.test(String(l).trim())) {
+      if (partOf(i) === 'statue') {   // statue collages count on their own: Statue 1, Statue 2…
+        var k = 0; for (var j = 0; j <= i; j++) if (partOf(j) === 'statue') k++;
+        return 'Statue ' + k;
+      }
+      return 'Collage ' + (i + 1);
+    }
+    return l;
   }
   // Opinion entries carry "file" (stable even if collages are deleted/re-ordered)
   // and "collage" (1-based position when submitted, fallback for old data).
@@ -448,6 +521,13 @@
     size = Math.max(size, out.length);
     while (out.length < size) out.push(null);
     return out;
+  }
+  // Statue slots of a submitted record ([] when it has none).
+  function opinionStatue(o) {
+    return (Array.isArray(o.statueLineup) ? o.statueLineup : []).map(function (e) {
+      var i = opinionIndex(e), opt = e ? Number(e.option) : 0;
+      return i >= 0 && opt >= 1 && opt <= collages[i].options ? { c: i, o: opt } : (e ? { gone: true } : null);
+    });
   }
   // ==== FINAL LINEUP =======================================================
   // The picked characters side by side, cut from the full-quality collages at
@@ -541,6 +621,34 @@
       bindPreviewDrag(card, idx);
       bar.appendChild(card);
     }
+    if (hasStatue()) renderStatueSlots(bar);
+  }
+  // Statue slot(s) in the sticky bar: own group after the peds (no drag; × clears;
+  // tapping an empty one opens the Statue tab).
+  function renderStatueSlots(bar) {
+    bar.appendChild(el('div', { class: 'bar-part-sep', role: 'presentation', 'aria-hidden': 'true' }, 'Statue'));
+    statueOrder.forEach(function (e, si) {
+      if (!e) {
+        var empty = el('button', { type: 'button', class: 'bar-slot bar-slot-empty bar-slot-statue', 'data-sidx': String(si),
+          'aria-label': 'Statue slot ' + (si + 1) + ', empty. Open the Statue tab to pick one.' });
+        empty.appendChild(el('span', { class: 'preview-badge sm', 'aria-hidden': 'true' }, 'S' + (si + 1)));
+        empty.appendChild(el('span', { class: 'bar-slot-new', 'aria-hidden': 'true' }, '\ud83d\uddff'));
+        empty.appendChild(el('span', { class: 'bar-slot-hint', 'aria-hidden': 'true' }, 'Pick statue'));
+        empty.addEventListener('click', function () { switchPart('statue', true); });
+        bar.appendChild(empty);
+        return;
+      }
+      var card = el('div', { class: 'bar-card preview-card bar-slot bar-slot-statue', role: 'listitem', 'data-sidx': String(si),
+        'data-c': String(e.c), 'data-o': String(e.o), tabindex: '0', 'aria-label': 'Statue slot ' + (si + 1) + '. Press Delete to clear.' });
+      card.appendChild(el('span', { class: 'preview-badge sm', 'aria-hidden': 'true' }, 'S' + (si + 1)));
+      var cv = cropCanvas(e.c, e.o, 140);
+      if (cv) { cv.setAttribute('aria-hidden', 'true'); card.appendChild(cv); }
+      var x = el('button', { type: 'button', class: 'preview-x', 'aria-label': 'Remove statue pick' }, '\u00d7');
+      x.addEventListener('click', function (ev) { ev.preventDefault(); ev.stopPropagation(); clearStatueSlot(si); });
+      card.appendChild(x);
+      card.addEventListener('keydown', function (ev) { if (ev.key === 'Delete' || ev.key === 'Backspace') { ev.preventDefault(); clearStatueSlot(si); } });
+      bar.appendChild(card);
+    });
   }
 
   // Pointer-based drag (mouse + touch). Fixed slot count: drop on another slot
@@ -609,7 +717,7 @@
       autoScroll();
     }
     function slotUnderPointer() {
-      var slots = Array.prototype.slice.call(strip.querySelectorAll('.bar-slot'));
+      var slots = Array.prototype.slice.call(strip.querySelectorAll('.bar-slot[data-idx]'));
       for (var k = 0; k < slots.length; k++) {
         if (slots[k].classList.contains('is-dragging')) continue;
         var rr = slots[k].getBoundingClientRect();
@@ -718,6 +826,10 @@
       var cv = nativeCrop(e.c, e.o);
       if (cv) parts.push({ cv: cv, label: '#' + (idx + 1), empty: false });
     });
+    statueOrder.forEach(function (e) {
+      var cv = e && nativeCrop(e.c, e.o);
+      if (cv) parts.push({ cv: cv, label: 'Statue', empty: false });
+    });
     if (!parts.some(function (p) { return !p.empty; })) return;
     var pad = 24, lab = 64;
     var filledH = parts.filter(function (p) { return p.cv; }).map(function (p) { return p.cv.height; });
@@ -758,6 +870,7 @@
 
   function flashCollageOpt(i, opt) {
     var sec = document.getElementById('collage-' + (i + 1)); if (!sec) return;
+    if (hasStatue()) switchPart(partOf(i), false);
     sec.scrollIntoView({ behavior: 'smooth', block: 'center' });
     var btn = sec.querySelector('.opt[data-opt="' + opt + '"]'); if (!btn) return;
     btn.classList.remove('op-flash'); void btn.offsetWidth; btn.classList.add('op-flash');
@@ -771,17 +884,18 @@
       filled + ' of ' + line.length + ' slots filled' + (filled < line.length ? ' (empty = remake)' : '') + ' \u00b7 tap one to jump to it.'));
     var row = el('div', { class: 'op-pack', role: 'list', 'aria-label': (own ? 'Your' : o.from + '\u2019s') + ' pack, in order' });
     var inPack = {};
-    line.forEach(function (e, idx) {
+    var addSlot = function (e, idx, statue) {
+      var pre = statue ? 'Statue ' : '';
       if (!e) {
-        var empty = el('div', { class: 'bar-slot bar-slot-empty op-slot', role: 'listitem', 'aria-label': 'Slot ' + (idx + 1) + ': empty, remake' });
-        empty.appendChild(el('span', { class: 'preview-badge sm', 'aria-hidden': 'true' }, '#' + (idx + 1)));
-        empty.appendChild(el('span', { class: 'bar-slot-new', 'aria-hidden': 'true' }, 'New'));
-        empty.appendChild(el('span', { class: 'bar-slot-hint', 'aria-hidden': 'true' }, 'Remake'));
+        var empty = el('div', { class: 'bar-slot bar-slot-empty op-slot', role: 'listitem', 'aria-label': pre + 'Slot ' + (idx + 1) + ': empty, ' + (statue ? 'no statue picked' : 'remake') });
+        empty.appendChild(el('span', { class: 'preview-badge sm', 'aria-hidden': 'true' }, (statue ? 'S' : '#') + (idx + 1)));
+        empty.appendChild(el('span', { class: 'bar-slot-new', 'aria-hidden': 'true' }, statue ? 'Statue' : 'New'));
+        empty.appendChild(el('span', { class: 'bar-slot-hint', 'aria-hidden': 'true' }, statue ? 'not picked' : 'Remake'));
         row.appendChild(empty); return;
       }
       if (e.gone) {   // picked from a collage that has since been deleted
         var gone = el('div', { class: 'bar-slot bar-slot-empty op-slot op-gone', role: 'listitem', 'aria-label': 'Slot ' + (idx + 1) + ': picked from a deleted collage' });
-        gone.appendChild(el('span', { class: 'preview-badge sm', 'aria-hidden': 'true' }, '#' + (idx + 1)));
+        gone.appendChild(el('span', { class: 'preview-badge sm', 'aria-hidden': 'true' }, (statue ? 'S' : '#') + (idx + 1)));
         gone.appendChild(el('span', { class: 'bar-slot-new', 'aria-hidden': 'true' }, 'Deleted'));
         gone.appendChild(el('span', { class: 'bar-slot-hint', 'aria-hidden': 'true' }, 'collage removed'));
         row.appendChild(gone); return;
@@ -790,15 +904,23 @@
       var lab = collageLabel(collages[e.c], e.c);
       var a = el('a', { href: '#collage-' + (e.c + 1), class: 'bar-card preview-card bar-slot op-slot', role: 'listitem',
         'data-c': String(e.c), 'data-o': String(e.o), 'aria-label': 'Slot ' + (idx + 1) + ': ' + lab + ', option ' + e.o });
-      a.appendChild(el('span', { class: 'preview-badge sm', 'aria-hidden': 'true' }, '#' + (idx + 1)));
+      a.appendChild(el('span', { class: 'preview-badge sm', 'aria-hidden': 'true' }, (statue ? 'S' : '#') + (idx + 1)));
       var cv = cropCanvas(e.c, e.o, 140); cv.setAttribute('aria-hidden', 'true'); a.appendChild(cv);
       var cap = el('span', { class: 'op-cap', 'aria-hidden': 'true' });
       cap.appendChild(el('b', null, lab)); cap.appendChild(el('span', null, 'option ' + e.o));
       a.appendChild(cap);
       a.addEventListener('click', (function (c, opt) { return function (ev) { ev.preventDefault(); flashCollageOpt(c, opt); }; })(e.c, e.o));
       row.appendChild(a);
-    });
+    };
+    line.forEach(function (e, idx) { addSlot(e, idx, false); });
     sec.appendChild(row);
+    var sline = opinionStatue(o);
+    if (sline.length) {   // statue part: its own small row under the ped pack
+      sec.appendChild(el('p', { class: 'op-hint op-statue-h' }, '\ud83d\uddff Statue'));
+      row = el('div', { class: 'op-pack op-pack-statue', role: 'list', 'aria-label': (own ? 'Your' : o.from + '\u2019s') + ' statue pick' });
+      sline.forEach(function (e, idx) { addSlot(e, idx, true); });
+      sec.appendChild(row);
+    }
     // Picks tagged on collages that didn't make the pack, and per-collage notes.
     var extra = [], noted = [];
     collages.forEach(function (c, i) {
@@ -826,6 +948,7 @@
     try {
       localStorage.setItem(sentKey, JSON.stringify({ from: client.name, clientTag: client.tag, submittedAt: data.submittedAt,
         overall: data.opinion || '', packSize: data.packSize, lineup: data.lineup, preview: !!PREVIEW,
+        statueSlots: data.statueSlots, statueLineup: data.statueLineup,
         picks: data.picks.map(function (p) { return { collage: p.collage, file: p.file, option: p.selected, note: p.note }; }) }));
     } catch (e) {}
     myOpOpen = true; renderOpinions();
@@ -884,7 +1007,8 @@
       (Array.isArray(rec.picks) ? rec.picks : []).forEach(function (p) {
         if (p && p.file && opinionOpts(p).length) add(p.file, name);
       });
-      (Array.isArray(rec.lineup) ? rec.lineup : []).forEach(function (e) { if (e && e.file) add(e.file, name); });
+      (Array.isArray(rec.lineup) ? rec.lineup : []).concat(Array.isArray(rec.statueLineup) ? rec.statueLineup : [])
+        .forEach(function (e) { if (e && e.file) add(e.file, name); });
     }
     function add(f, name) {
       f = String(f).split('/').pop(); map[f] = map[f] || [];
@@ -961,10 +1085,11 @@
   function renderCollage(c, i) {
     var n = c.options, b = bounds(c), label = collageLabel(c, i);
     var sec = el('section', { class: 'collage', id: 'collage-' + (i + 1), 'aria-labelledby': 'h-c' + (i + 1), 'data-file': c.file });
+    if (hasStatue()) sec.setAttribute('data-part', partOf(i));
     if (c.hidden) sec.classList.add('adm-collage-hidden');
     var head = el('div', { class: 'collage-head' });
     head.appendChild(el('h2', { id: 'h-c' + (i + 1) }, label + ' · ' + n + ' options'));
-    head.appendChild(el('span', { class: 'status', 'aria-live': 'polite' }, 'Not picked yet · tap to pick (as many as you want)'));
+    head.appendChild(el('span', { class: 'status', 'aria-live': 'polite' }, pickPrompt()));
     if (ADMIN && window.HushAdmin.collageControls) {
       var msgEl = document.getElementById('admin-msg');
       var ctrls = window.HushAdmin.collageControls(slug, c, msgEl, function (action, meta) {
@@ -993,11 +1118,13 @@
             picks.splice(idx, 1);
             imgs.splice(idx, 1);
             notes.splice(idx, 1);
-            lineupOrder = lineupOrder.map(function (e) {
+            var shift = function (e) {
               if (!e) return null;
               if (e.c === idx) return null;
               return { c: e.c > idx ? e.c - 1 : e.c, o: e.o };
-            });
+            };
+            lineupOrder = lineupOrder.map(shift);
+            statueOrder = statueOrder.map(shift);
             save();
           }
           sec.remove();
@@ -1005,6 +1132,7 @@
             s.id = 'collage-' + (j + 1);
             var h = s.querySelector('h2'); if (h) h.id = 'h-c' + (j + 1);
           });
+          if (hasStatue()) renderStatueSoon();
           renderSummary();
         }
       });
@@ -1086,7 +1214,8 @@
     var dlBtn = document.getElementById('lineup-download');
     if (dlBtn) dlBtn.disabled = filled === 0;
 
-    var anySlot = lineupOrder.some(function (e) { return !!e; });
+    var sFilled = statueFilled();
+    var anySlot = lineupOrder.some(function (e) { return !!e; }) || sFilled > 0;
     if (!anySlot) {
       var emptyLi = el('li', { class: 'lineup-hint' });
       emptyLi.appendChild(el('span', { class: 'ph soft', 'aria-hidden': 'true' }, '＋'));
@@ -1108,19 +1237,45 @@
         a.appendChild(document.createTextNode('#' + (idx + 1)));
         li.appendChild(a); list.appendChild(li);
       });
+      statueOrder.forEach(function (e, si) {
+        var li = el('li', { class: e ? 'preview-li li-statue' : 'preview-li slot-empty li-statue' });
+        li.appendChild(el('span', { class: 'preview-badge sm', 'aria-hidden': 'true' }, 'S' + (si + 1)));
+        if (!e) {
+          var b = el('button', { type: 'button', class: 'ph soft statue-go' }, '\ud83d\uddff');
+          b.addEventListener('click', function () { switchPart('statue', true); });
+          li.appendChild(b); li.appendChild(document.createTextNode('Statue: not picked yet'));
+          list.appendChild(li); return;
+        }
+        var a = el('a', { href: '#collage-' + (e.c + 1), title: 'Statue pick' });
+        a.appendChild(cropCanvas(e.c, e.o, 150));
+        a.appendChild(document.createTextNode('Statue'));
+        li.appendChild(a); list.appendChild(li);
+      });
     }
     renderBarPreview();
+    updateTabs();
     renderOpinions();
     // Submit is pack-based: empty slots = remakes. Notes are optional and never block.
     // Do NOT require a pick on every collage (clients may skip some).
-    var ready = filled >= 1 && collages.length > 0;
+    var ready = (filled + sFilled) >= 1 && collages.length > 0;
     document.getElementById('submit').disabled = !ready;
-    document.getElementById('bar-count').textContent = filled + ' of ' + packSize + ' pack slots filled';
     var need = document.getElementById('need');
-    need.textContent = ready
-      ? (filled + ' of ' + packSize + ' pack slots filled' + (filled < packSize ? ' · empty slots = remake' : '') + ' — ready to submit. Drag the bar to reorder.')
-      : ('\ud83d\udc46 Pick at least one character to submit (tap any character above; notes are optional).');
-    need.classList.toggle('need-hint', !ready);
+    if (!parts) {
+      document.getElementById('bar-count').textContent = filled + ' of ' + packSize + ' pack slots filled';
+      need.textContent = ready
+        ? (filled + ' of ' + packSize + ' pack slots filled' + (filled < packSize ? ' · empty slots = remake' : '') + ' — ready to submit. Drag the bar to reorder.')
+        : ('\ud83d\udc46 Pick at least one character to submit (tap any character above; notes are optional).');
+      need.classList.toggle('need-hint', !ready);
+      return;
+    }
+    var pedTxt = filled + ' of ' + packSize + ' peds';
+    document.getElementById('bar-count').textContent = pedTxt + (hasStatue() ? ' \u00b7 ' + sFilled + ' of ' + statueSlots + ' statue' : '') + ' picked';
+    var waitStatue = hasStatue() && sFilled < 1;
+    if (!ready) need.textContent = '\ud83d\udc46 Pick up to ' + packSize + ' peds' + (hasStatue() ? ' and ' + statueSlots + ' statue' : '') + ' to submit (notes are optional).';
+    else if (waitStatue && !statueCount()) need.textContent = pedTxt + ' picked \u2014 statue options are coming soon. You can submit once you\u2019ve picked a statue; your ped picks are saved.';
+    else if (waitStatue) need.textContent = pedTxt + ' picked \u2014 almost done! Pick your statue next (Statue tab).';
+    else need.textContent = pedTxt + (filled < packSize ? ' (empty slots = remake)' : '') + (hasStatue() ? ' + statue' : '') + ' \u2014 ready to submit. Drag the bar to reorder.';
+    need.classList.toggle('need-hint', !ready || waitStatue);
   }
 
   function cropBox(i, opt) {
@@ -1136,7 +1291,7 @@
   // back-compat with older sheet tools; always also mirrored in picks[].selected).
   function payload() {
     var f = document.getElementById('picks-form');
-    return {
+    var d = {
       schema: 'hush-picks/v2',
       project: slug,
       projectTitle: project.title,
@@ -1161,20 +1316,37 @@
             var box = cropBox(i, opt);
             return { option: opt, x: box.x, y: box.y, w: box.w, h: box.h };
           }),
-          note: isAdvisor() && notes[i] && notes[i].trim() ? notes[i].trim() : undefined
+          note: isAdvisor() && notes[i] && notes[i].trim() ? notes[i].trim() : undefined,
+          part: parts ? partOf(i) : undefined
         };
       }),
       packSize: packSize,
       // Fixed-length pack lineup (null = empty slot → NEW / remake requested).
       lineup: lineupOrder.map(function (e, idx) {
         if (!e) return null;
-        return { collage: e.c + 1, file: collages[e.c].file, option: e.o, previewIndex: idx + 1 };
+        return { collage: e.c + 1, file: collages[e.c].file, option: e.o, previewIndex: idx + 1, part: parts ? 'peds' : undefined };
       }),
       summary: lineupOrder.map(function (e, idx) {
         if (!e) return '#' + (idx + 1) + ' NEW / remake requested';
         return '#' + (idx + 1) + ' Collage ' + (e.c + 1) + ' option ' + e.o;
       }).join('; ')
     };
+    if (parts) {
+      // Parts projects: "lineup"/"packSize" stay the PED pack (old tools keep working);
+      // statue picks go in their own "statueLineup" (picks[].part also says which is which).
+      d.parts = { peds: packSize, statue: statueSlots };
+      if (hasStatue()) {
+        d.statueSlots = statueSlots;
+        d.statueLineup = statueOrder.map(function (e, idx) {
+          if (!e) return null;
+          return { collage: e.c + 1, file: collages[e.c].file, option: e.o, previewIndex: idx + 1, part: 'statue' };
+        });
+        d.summary += '; ' + statueOrder.map(function (e, idx) {
+          return 'Statue #' + (idx + 1) + (e ? ' Collage ' + (e.c + 1) + ' option ' + e.o : ' not picked');
+        }).join('; ');
+      }
+    }
+    return d;
   }
 
   function dismissCelebrate() {
@@ -1279,6 +1451,18 @@
       strip.appendChild(li);
     });
     card.appendChild(strip);
+    if (Array.isArray(data.statueLineup) && data.statueLineup.length) {
+      card.appendChild(el('p', { class: 'celebrate-part' }, '\ud83d\uddff Statue'));
+      var sstrip = el('ul', { class: 'celebrate-lineup picks', 'aria-label': 'Your statue pick' });
+      data.statueLineup.forEach(function (e, idx) {
+        var li = el('li', { class: e ? 'preview-li' : 'preview-li slot-empty' });
+        li.appendChild(el('span', { class: 'preview-badge sm', 'aria-hidden': 'true' }, 'S' + (idx + 1)));
+        if (e) { li.appendChild(cropCanvas(e.collage - 1, e.option, 150)); li.appendChild(document.createTextNode('Statue')); }
+        else { li.appendChild(el('span', { class: 'ph soft' }, '\u2014')); li.appendChild(document.createTextNode('Not picked')); }
+        sstrip.appendChild(li);
+      });
+      card.appendChild(sstrip);
+    }
 
     var done = el('button', { type: 'button', class: 'btn celebrate-done' }, 'Done');
     done.addEventListener('click', dismissCelebrate);
@@ -1315,9 +1499,12 @@
   var sending = false;
   function onSubmit(e) {
     e.preventDefault();
-    if (sending || filledCount() < 1) return;
+    if (sending || filledCount() + statueFilled() < 1) return;
     var f = document.getElementById('picks-form');
     if (mode === 'locked') return;
+    // Statue part: never send a pack without its statue — nudge to the Statue tab instead.
+    // (While statue images aren't uploaded yet this blocks Submit; the tab explains why.)
+    if (hasStatue() && statueFilled() < 1) { statueNudge(); return; }
     var nameIn = f.elements.name, nameErr = document.getElementById('name-error');
     if (mode === 'name' && !nameIn.value.trim()) {
       nameErr.hidden = false; nameIn.setAttribute('aria-invalid', 'true'); nameIn.focus();
@@ -1391,6 +1578,7 @@
   function resetAll() {
     collages.forEach(function (c, i) { picks[i] = []; syncCollageUI(i); });
     lineupOrder = emptySlots();
+    statueOrder = emptySlots(statueSlots);
     save();
     try { localStorage.removeItem(storeKey); localStorage.removeItem(storeKey + ':notes'); } catch (e) {}
     notes = []; document.querySelectorAll('.note-field textarea').forEach(function (t) { t.value = ''; });
@@ -1429,6 +1617,104 @@
     document.body.insertBefore(bar, document.body.firstChild);
   }
 
+  // ==== PEDS / STATUE TABS =================================================
+  function statueNudge() {
+    switchPart('statue', true);
+    var soon = !statueCount();
+    flashPickToast(null, { t: soon ? 'Almost done! Statue options are coming soon' : 'Almost done! Pick your statue next', e: '\ud83d\uddff' }, 2600);
+    var need = document.getElementById('need');
+    if (need) {
+      need.textContent = soon ? 'Your ' + filledCount() + ' ped picks are saved. Statue options are coming soon \u2014 you can submit once you\u2019ve picked a statue.'
+        : 'Almost done! Pick your statue on the Statue tab, then press Submit.';
+      need.classList.add('need-hint');
+    }
+  }
+  function stickyTop() {
+    var t = 0;
+    ['admin-bar', 'test-banner'].forEach(function (id) {
+      var e = document.getElementById(id); if (!e) return;
+      var r = e.getBoundingClientRect(); if (r.height && r.top <= 1) t = Math.max(t, r.bottom);
+    });
+    return Math.max(0, Math.round(t));
+  }
+  function placeTabs() {
+    var tabs = document.getElementById('part-tabs'); if (tabs) tabs.style.top = stickyTop() + 'px';
+  }
+  function switchPart(p, scroll) {
+    if (!hasStatue()) return;
+    view = p === 'statue' ? 'statue' : 'peds';
+    app.setAttribute('data-view', view);
+    document.querySelectorAll('#part-tabs .part-tab').forEach(function (b) {
+      var on = b.getAttribute('data-part') === view;
+      b.classList.toggle('is-on', on); b.setAttribute('aria-selected', on ? 'true' : 'false'); b.tabIndex = on ? 0 : -1;
+    });
+    if (scroll) {
+      var anchor = document.getElementById('part-anchor');
+      if (anchor) {
+        var y = anchor.getBoundingClientRect().top + window.pageYOffset - stickyTop();
+        if (window.pageYOffset > y + 2 || window.pageYOffset < y - window.innerHeight * 0.5) window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+      }
+    }
+  }
+  function updateTabs() {
+    if (!hasStatue()) return;
+    var pc = document.getElementById('pt-peds-n'), sc = document.getElementById('pt-statue-n');
+    if (pc) pc.textContent = filledCount() + '/' + packSize;
+    if (sc) sc.textContent = statueFilled() + '/' + statueSlots;
+    var sb = document.querySelector('#part-tabs .part-tab[data-part="statue"]');
+    if (sb) sb.classList.toggle('is-done', statueFilled() >= 1);
+    var pb = document.querySelector('#part-tabs .part-tab[data-part="peds"]');
+    if (pb) pb.classList.toggle('is-done', filledCount() >= packSize);
+  }
+  function buildTabs() {
+    var anchor = el('div', { id: 'part-anchor', 'aria-hidden': 'true' });
+    var tabs = el('div', { class: 'part-tabs', id: 'part-tabs', role: 'tablist', 'aria-label': 'What you are picking' });
+    [['peds', '1', 'Peds', 'pt-peds-n'], ['statue', '2', 'Statue prop', 'pt-statue-n']].forEach(function (t) {
+      var b = el('button', { type: 'button', role: 'tab', class: 'part-tab', id: 'tab-' + t[0], 'data-part': t[0], 'aria-controls': 'collages' });
+      b.appendChild(el('span', { class: 'pt-step', 'aria-hidden': 'true' }, t[1]));
+      b.appendChild(el('span', { class: 'pt-name' }, t[2]));
+      b.appendChild(el('span', { class: 'pt-n', id: t[3] }, ''));
+      b.addEventListener('click', function () { switchPart(t[0], true); });
+      b.addEventListener('keydown', function (ev) {
+        if (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight') {
+          ev.preventDefault(); var to = t[0] === 'peds' ? 'statue' : 'peds'; switchPart(to, false);
+          document.getElementById('tab-' + to).focus();
+        }
+      });
+      tabs.appendChild(b);
+    });
+    tabs.appendChild(el('span', { class: 'pt-hint' }, 'Pick ' + packSize + ' peds, then ' + statueSlots + ' statue'));
+    app.insertBefore(tabs, app.firstChild);
+    app.insertBefore(anchor, tabs);
+    var raf = 0;
+    function onScroll() { if (!raf) raf = requestAnimationFrame(function () { raf = 0; placeTabs(); }); }
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll);
+    setTimeout(placeTabs, 0); setTimeout(placeTabs, 600);
+    // Links to a collage on the other tab (summary, opinions) switch tabs first.
+    document.addEventListener('click', function (ev) {
+      var a = ev.target.closest && ev.target.closest('a[href^="#collage-"]'); if (!a) return;
+      var n = Number(a.getAttribute('href').slice(9)) - 1;
+      if (n >= 0 && n < collages.length && partOf(n) !== view) switchPart(partOf(n), false);
+    }, true);
+    switchPart('peds', false);
+  }
+  // Statue part with no statue collages (yet): friendly placeholder on the Statue tab.
+  function renderStatueSoon() {
+    var list = document.getElementById('collages'), old = document.getElementById('statue-soon');
+    if (statueCount()) { if (old) old.remove(); return; }
+    if (old) return;
+    var box = el('div', { class: 'statue-soon', id: 'statue-soon', 'data-part': 'statue', role: 'status' });
+    box.appendChild(el('p', { class: 'statue-soon-emoji', 'aria-hidden': 'true' }, '\ud83d\uddff\u2728'));
+    box.appendChild(el('h2', null, 'Statue prop options coming soon'));
+    box.appendChild(el('p', null, 'Hush is still finishing the statue prop designs. Your ped picks are saved on this device \u2014 come back here to pick ' +
+      (statueSlots === 1 ? '1 statue' : statueSlots + ' statues') + ', then press Submit.'));
+    var back = el('button', { type: 'button', class: 'btn btn-secondary' }, '\u2190 Back to peds');
+    back.addEventListener('click', function () { switchPart('peds', true); });
+    box.appendChild(back);
+    list.appendChild(box);
+  }
+
   function fail(msg) { app.textContent = ''; app.appendChild(el('p', { class: 'error' }, msg)); }
 
   // ==== HIDDEN PROJECTS ================================================
@@ -1463,6 +1749,17 @@
       project = p;
       var ps = Number(p.packSize != null ? p.packSize : p.slots);
       packSize = (ps >= 1 && ps === (ps | 0) && ps <= 40) ? ps : 8;
+      // Optional "parts": {"peds": {"slots": 7}, "statue": {"slots": 1}} (number shorthand ok).
+      if (p.parts && typeof p.parts === 'object') {
+        var slotsOf = function (x) {
+          var n = Number(x && typeof x === 'object' ? x.slots : x);
+          return n >= 0 && n === (n | 0) && n <= 40 ? n : null;
+        };
+        parts = p.parts;
+        var pn = slotsOf(p.parts.peds); if (pn) packSize = pn;
+        var sn = p.parts.statue ? slotsOf(p.parts.statue) : 0;
+        statueSlots = sn == null ? 1 : sn;
+      }
       // Clients never see collages marked hidden in project.json; admin still does (greyed).
       var raw = p.collages || [];
       // Optional batch/section dividers: a collage with "section": "Heading" (and optional
@@ -1480,6 +1777,7 @@
       loadHushSubs();   // Hush: client picks previews (top of page) + Delete guard
       picks = collages.map(function () { return []; });
       lineupOrder = emptySlots();
+      statueOrder = emptySlots(statueSlots);
       if (mode !== 'locked') load();
       document.title = p.title + ' — Pick your characters · Hush Media Creations';
       document.getElementById('title').textContent = p.title;
@@ -1493,6 +1791,19 @@
         nt.appendChild(ni); nt.appendChild(nx);
         var dsc = document.getElementById('desc'); dsc.parentNode.insertBefore(nt, dsc.nextSibling);
       }
+      if (parts) {   // "How it works" for parts projects (hard limit, maybe a statue)
+        var how = document.querySelector('.howto');
+        if (how) {
+          how.textContent = '';
+          how.appendChild(el('strong', null, 'How it works: '));
+          how.appendChild(document.createTextNode('tap up to ' + packSize + ' peds you like (tap again to unpick)' +
+            (hasStatue() ? ', then open the Statue tab and pick ' + (statueSlots === 1 ? '1 statue' : statueSlots + ' statues') : '') +
+            '. Your picks fill the pack slots at the bottom; leave a ped slot empty for a remake. Then press '));
+          how.appendChild(el('strong', null, 'Submit picks'));
+          how.appendChild(document.createTextNode('.'));
+        }
+      }
+      if (hasStatue()) buildTabs();
       var list = document.getElementById('collages');
       var lastSec = null, secN = 0;
       collages.forEach(function (c, i) {
@@ -1500,6 +1811,7 @@
           lastSec = c._section; secN++;
           var dv = document.createElement('div');
           dv.className = 'section-divider'; dv.setAttribute('role', 'separator');
+          if (hasStatue()) dv.setAttribute('data-part', partOf(i));
           if (secN > 1) dv.classList.add('section-divider-next');
           var dh = document.createElement('h2'); dh.className = 'section-title'; dh.textContent = c._section.title;
           dv.appendChild(dh);
@@ -1508,6 +1820,7 @@
         }
         list.appendChild(renderCollage(c, i));
       });
+      if (hasStatue()) renderStatueSoon();
       if (mode === 'locked') {
         app.classList.add('locked');
         document.querySelector('.bar').classList.add('locked-bar');

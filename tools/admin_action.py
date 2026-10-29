@@ -159,7 +159,8 @@ def picked_by(slug, file_, root=None):
     names = []
     for name, r in recs:
         hit = any(isinstance(p, dict) and os.path.basename(str(p.get('file') or '')) == file_ and opts(p) for p in r.get('picks') or [])
-        hit = hit or any(isinstance(e, dict) and os.path.basename(str(e.get('file') or '')) == file_ for e in r.get('lineup') or [])
+        hit = hit or any(isinstance(e, dict) and os.path.basename(str(e.get('file') or '')) == file_
+                         for e in (r.get('lineup') or []) + (r.get('statueLineup') or []))
         if hit and name not in names: names.append(name)
     return names
 

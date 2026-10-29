@@ -364,3 +364,29 @@ html.celebrate-lock,html.celebrate-lock body{overflow:hidden;overscroll-behavior
 .op-pack .op-gone{opacity:.6}
 .adm-guard{font-size:.72rem;color:var(--muted);margin-left:6px}
 .adm-c-del[disabled]{opacity:.45;cursor:not-allowed}
+/* Peds / Statue tabs (projects with a "parts".statue config) */
+#part-anchor{height:0}
+.part-tabs{position:sticky;top:0;z-index:24;display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;margin:0 0 20px;padding:10px 12px;border-radius:var(--r);background:rgba(23,24,31,.97);border:1px solid var(--line);box-shadow:0 8px 22px rgba(0,0,0,.35);backdrop-filter:blur(6px)}
+.part-tab{font:inherit;display:inline-flex;align-items:center;gap:8px;padding:10px 18px;border-radius:999px;border:2px solid var(--line);background:var(--panel2);color:var(--text);font-weight:800;font-size:1rem;cursor:pointer;transition:border-color .15s ease,background .15s ease}
+.part-tab:hover{border-color:var(--gold2)}
+.part-tab:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.part-tab.is-on{background:linear-gradient(135deg,#f2c063,#d6993a);border-color:transparent;color:#1a1206}
+.part-tab .pt-step{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:rgba(0,0,0,.25);font-size:.8rem}
+.part-tab .pt-n{font-size:.82rem;font-weight:700;opacity:.85;padding:1px 8px;border-radius:999px;background:rgba(0,0,0,.22)}
+.part-tab.is-done .pt-n::after{content:" \2713"}
+.pt-hint{margin-left:auto;color:var(--muted);font-size:.85rem}
+#app[data-view="peds"] #collages > [data-part="statue"],#app[data-view="statue"] #collages > [data-part="peds"]{display:none}
+.statue-soon{text-align:center;padding:40px 20px;margin:0 0 26px;border:2px dashed var(--gold2);border-radius:var(--r);background:var(--panel)}
+.statue-soon h2{margin:6px 0 8px;color:var(--gold)}
+.statue-soon p{color:var(--muted);max-width:56ch;margin:0 auto 16px}
+.statue-soon .statue-soon-emoji{font-size:2.4rem;margin:0;color:inherit}
+.bar-part-sep{flex:0 0 auto;align-self:stretch;display:flex;align-items:center;padding:0 2px 0 12px;border-left:2px dashed var(--line);color:var(--gold);font-weight:800;font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;writing-mode:vertical-rl;transform:rotate(180deg)}
+button.bar-slot-statue.bar-slot-empty{font:inherit;cursor:pointer;border-color:var(--gold2);color:var(--gold)}
+.bar-slot-statue.bar-card.preview-card{cursor:default;border-color:var(--gold)}
+.bar-slot-statue .bar-slot-new{font-size:1.4rem;margin-top:10px;text-transform:none}
+.op-statue-h{margin-top:12px;font-weight:700;color:var(--gold)}
+.celebrate-part{margin:10px 0 4px;font-weight:800;color:var(--gold)}
+.statue-go{cursor:pointer;border:0;font:inherit;color:var(--gold)}
+.pick-toast.pick-toast-msg .pick-toast-text{text-transform:none;letter-spacing:.01em;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-weight:800;font-size:.98rem;white-space:normal}
+.pick-toast.pick-toast-msg{max-width:min(340px,calc(100vw - 16px))}
+@media (max-width:700px){.part-tabs{padding:8px;gap:6px}.part-tab{padding:8px 12px;font-size:.92rem}.pt-hint{width:100%;margin-left:0;font-size:.78rem}}
