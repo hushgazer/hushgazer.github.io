@@ -1659,8 +1659,8 @@
   function updateTabs() {
     if (!hasStatue()) return;
     var pc = document.getElementById('pt-peds-n'), sc = document.getElementById('pt-statue-n');
-    if (pc) pc.textContent = filledCount() + '/' + packSize;
-    if (sc) sc.textContent = statueFilled() + '/' + statueSlots;
+    if (pc) pc.textContent = filledCount() + ' of ' + packSize + ' picked';
+    if (sc) sc.textContent = statueFilled() + ' of ' + statueSlots + ' picked';
     var sb = document.querySelector('#part-tabs .part-tab[data-part="statue"]');
     if (sb) sb.classList.toggle('is-done', statueFilled() >= 1);
     var pb = document.querySelector('#part-tabs .part-tab[data-part="peds"]');
@@ -1669,11 +1669,10 @@
   function buildTabs() {
     var anchor = el('div', { id: 'part-anchor', 'aria-hidden': 'true' });
     var tabs = el('div', { class: 'part-tabs', id: 'part-tabs', role: 'tablist', 'aria-label': 'What you are picking' });
-    [['peds', '1', 'Peds', 'pt-peds-n'], ['statue', '2', 'Statue prop', 'pt-statue-n']].forEach(function (t) {
+    [['peds', 'Peds', 'pt-peds-n'], ['statue', 'Statue', 'pt-statue-n']].forEach(function (t) {
       var b = el('button', { type: 'button', role: 'tab', class: 'part-tab', id: 'tab-' + t[0], 'data-part': t[0], 'aria-controls': 'collages' });
-      b.appendChild(el('span', { class: 'pt-step', 'aria-hidden': 'true' }, t[1]));
-      b.appendChild(el('span', { class: 'pt-name' }, t[2]));
-      b.appendChild(el('span', { class: 'pt-n', id: t[3] }, ''));
+      b.appendChild(el('span', { class: 'pt-name' }, t[1]));
+      b.appendChild(el('span', { class: 'pt-n', id: t[2] }, ''));
       b.addEventListener('click', function () { switchPart(t[0], true); });
       b.addEventListener('keydown', function (ev) {
         if (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight') {

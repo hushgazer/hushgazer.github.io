@@ -104,7 +104,7 @@ Set it in `projects/<slug>/project.json` (no code change, no rebuild needed):
 * **7 vs 8 peds**: change `parts.peds.slots` (keep `packSize` the same number for old tools).
   With `"parts"` set the limit is **hard**: a client can't pick more than that many peds
   (friendly "That's all 7 peds! Tap × on one to swap" toast).
-* **Statue on**: `"statue": {"slots": 1}` → sticky **1 Peds / 2 Statue prop** tabs at the top,
+* **Statue on**: `"statue": {"slots": 1}` → sticky **Peds / Statue** tabs (each with an "N of M picked" count) at the top,
   a separate `S1` statue slot in the bottom bar, and a **Submit guard**: Submit with no statue
   picked does not send — it shows "Almost done! Pick your statue next" and opens the Statue tab.
 * **Statue off**: leave `"statue"` out (or `"statue": {"slots": 0}`): no tabs, no guard,

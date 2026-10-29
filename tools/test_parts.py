@@ -56,7 +56,7 @@ with sync_playwright() as p:
     assert pg.locator('#bar-thumbs .bar-slot[data-idx].preview-card').count() == 7
     assert 'all 7 peds' in pg.text_content('#hush-pick-toast'), pg.text_content('#hush-pick-toast')
     assert pg.get_attribute('#collage-8 .opt[data-opt="2"]', 'aria-pressed') == 'false', '8th ped must not be picked'
-    assert pg.text_content('#pt-peds-n') == '7/7'
+    assert pg.text_content('#pt-peds-n') == '7 of 7 picked' and pg.text_content('#tab-statue').startswith('Statue')
     print('PASS 7-ped hard limit + toast')
     pg.click('#submit'); pg.wait_for_timeout(400)
     assert pg.get_attribute('#app', 'data-view') == 'statue' and pg.is_visible('#statue-soon') and not pg.is_visible('#collage-1')
