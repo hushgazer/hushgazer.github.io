@@ -1,5 +1,5 @@
 {
-  "title": "Super Sonic — Poor to Rich",
+  "title": "Super Sonic â Poor to Rich",
   "description": "New designs in Batch 2! Pick 7 peds on the Peds tab, then 1 statue on the Statue tab. Tap again to unpick.",
   "packSize": 7,
   "parts": {
@@ -361,23 +361,6 @@
         1359,
         1727,
         2172
-      ]
-    },
-    {
-      "file": "collage-22.png",
-      "options": 7,
-      "label": "Underground Racer to Racing Legend",
-      "part": "peds",
-      "batch": 2,
-      "columns": [
-        0,
-        269,
-        516,
-        784,
-        1064,
-        1347,
-        1694,
-        2079
       ]
     },
     {
