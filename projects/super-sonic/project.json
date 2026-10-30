@@ -1,5 +1,5 @@
 {
-  "title": "Super Sonic ÃÂ¢ÃÂÃÂ Poor to Rich",
+  "title": "Super Sonic ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ Poor to Rich",
   "description": "New designs in Batch 2! Pick 7 peds on the Peds tab, then 1 statue on the Statue tab. Tap again to unpick.",
   "packSize": 7,
   "parts": {
@@ -311,23 +311,6 @@
         2172
       ],
       "batch": 1
-    },
-    {
-      "file": "collage-19.png",
-      "options": 7,
-      "label": "Street to Billionaire",
-      "part": "peds",
-      "batch": 2,
-      "columns": [
-        0,
-        261,
-        510,
-        785,
-        1085,
-        1372,
-        1720,
-        2172
-      ]
     },
     {
       "file": "collage-24.png",
