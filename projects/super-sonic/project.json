@@ -1,5 +1,5 @@
 {
-  "title": "Super Sonic â Poor to Rich",
+  "title": "Super Sonic Ã¢ÂÂ Poor to Rich",
   "description": "New designs in Batch 2! Pick 7 peds on the Peds tab, then 1 statue on the Statue tab. Tap again to unpick.",
   "packSize": 7,
   "parts": {
@@ -344,23 +344,6 @@
         1238,
         1622,
         2073
-      ]
-    },
-    {
-      "file": "collage-21.png",
-      "options": 7,
-      "label": "Junkyard to Tech Tycoon",
-      "part": "peds",
-      "batch": 2,
-      "columns": [
-        0,
-        261,
-        542,
-        800,
-        1034,
-        1359,
-        1727,
-        2172
       ]
     },
     {
