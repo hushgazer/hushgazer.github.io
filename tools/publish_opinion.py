@@ -72,7 +72,7 @@ def build_record(d, cfg, slug):
     statue = slots('statueLineup')           # projects with a "parts".statue config
     rec = {'from': who['name'], 'role': who.get('role', 'client'), 'clientTag': tag,
            'submittedAt': d.get('submittedAt'),
-           'overall': str(d.get('opinion') or d.get('note') or '')[:2000],
+           'overall': str(d.get('opinion') or d.get('finalNote') or d.get('note') or '')[:2000],
            'picks': sorted(picks, key=lambda e: e['collage'])}
     if lineup:
         rec['packSize'] = int(d.get('packSize') or len(lineup)); rec['lineup'] = lineup

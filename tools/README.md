@@ -124,6 +124,41 @@ Set it in `projects/<slug>/project.json` (no code change, no rebuild needed):
   `make_picks_sheet.py` adds "Statue 1 · Collage X - option Y" tiles after the ped pack.
 * Test: `python3 tools/test_parts.py` (server on :8765).
 
+## 3b. Batches (per project, `"batches"` in project.json)
+
+Group a new round of collages and fold the old round away (no code change):
+
+```json
+"batches": [
+  {"id": 2, "title": "Batch 2", "note": "Hope these are better! Pick your favourites below, and leave a note at the bottom if you need any changes."},
+  {"id": 1, "title": "Batch 1 (earlier designs)", "collapsed": true, "note": "The first round you already sent picks for."}
+],
+"collages": [ {"file": "collage-19.png", "options": 7, "label": "Street to Billionaire", "part": "peds", "batch": 2}, ... ]
+```
+
+* Each collage gets `"batch": <id>`. Batches show in the order of the `"batches"` list
+  (newest first), one group per batch **and** part (Peds / Statue tab each get their own groups).
+* `"title"` = group heading, `"note"` = friendly callout at the top of the group (green box;
+  inside the body for collapsed batches).
+* `"collapsed": true` = closed by default behind a "▸ Batch 1 (earlier designs) · N collages · Show"
+  toggle; clients can still open it. Its full-quality masters load only when a crop is needed.
+  Links to a collage in a closed batch (pack bar, summary, opinions) open it automatically.
+* Auto labels count inside each batch + part ("Collage 1…", "Statue 1…"); give new rounds real
+  `"label"`s. Payload `collage` numbers are page positions (batch order); `file` is the stable key.
+* Never delete an old batch that clients picked from (delete guard); collapse it instead.
+  Drafts and published picks are keyed by file, so re-ordering is safe.
+* No `"batches"` = old behaviour (project.json order, optional `"section"` dividers still work,
+  also inside a batch).
+
+## 3c. Final note (every project)
+
+* The box above Submit reads "Anything else? Leave a final note for Hush (optional)" for every
+  client (advisors: "Your overall opinion — anything else for Hush?", the same single box).
+  Turn it off per project with `"finalNote": false`.
+* Payload `finalNote` (advisors also still send `opinion`); email field `final_note`; the
+  summary ends with `| Final note: …`. `publish_opinion.py` stores it as `overall`, shown in
+  Hush's "Client picks" previews under "📝 Final note"; `make_picks_sheet.py` prints `finalNote:`.
+
 ## 4. Test mode (Hush only) and the picks-watcher
 
 * Add `?test=1` to any project URL (works with `?c=`): orange banner

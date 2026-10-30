@@ -215,6 +215,7 @@ def main():
     sheet.save(out, compress_level=6)  # PNG is lossless
     print(out, sheet.size)
     for mp, sz in marked: print("marked:", mp, sz)
+    if data.get("finalNote"): print("finalNote:", data["finalNote"])
     if bot: print("imageBot:", bot)
 
 if __name__ == "__main__":

@@ -73,23 +73,28 @@ with sync_playwright() as p:
     NS = len([c for c in CFG['collages'] if c.get('part') == 'statue'])
     assert NS >= 1 and pg.locator('#collages .collage[data-part="statue"]').count() == NS
     assert pg.locator('#statue-soon').count() == 0
+    S1 = pg.evaluate("Number(document.querySelector('#collages .collage[data-part=statue]').id.split('-')[1])")
+    S2 = pg.evaluate("Number(document.querySelectorAll('#collages .collage[data-part=statue]')[1].id.split('-')[1])")
     for i in range(1, 4): pg.click('#collage-%d .opt[data-opt="1"]' % i)
     pg.click('#submit'); pg.wait_for_timeout(300)
     assert pg.get_attribute('#app', 'data-view') == 'statue' and 'pick your statue' in pg.text_content('#hush-pick-toast').lower() and not posts
-    assert 'Statue 1' in pg.text_content('#collage-11 h2')
-    pg.click('#collage-11 .opt[data-opt="3"]'); pg.click('#collage-11 .opt[data-opt="4"]')
-    assert pg.get_attribute('#collage-11 .opt[data-opt="4"]', 'aria-pressed') == 'false', 'only 1 statue'
+    pg.click('#collage-%d .opt[data-opt="3"]' % S1); pg.click('#collage-%d .opt[data-opt="4"]' % S1)
+    assert pg.get_attribute('#collage-%d .opt[data-opt="4"]' % S1, 'aria-pressed') == 'false', 'only 1 statue'
     if NS > 1:
-        pg.click('#collage-12 .opt[data-opt="1"]')
-        assert pg.get_attribute('#collage-12 .opt[data-opt="1"]', 'aria-pressed') == 'false', 'only 1 statue overall'
+        pg.click('#collage-%d .opt[data-opt="1"]' % S2)
+        assert pg.get_attribute('#collage-%d .opt[data-opt="1"]' % S2, 'aria-pressed') == 'false', 'only 1 statue overall'
+    pg.fill('#overall', 'Love batch 2, make #3 shinier')
     assert pg.locator('#bar-thumbs .bar-slot-statue.preview-card').count() == 1
     pg.wait_for_timeout(2300)
     pg.click('#submit'); pg.wait_for_selector('#hush-celebrate')
     assert 'Statue' in pg.text_content('#hush-celebrate')
     d = [json.loads(re.search(r'HUSHPICKS_JSON_BEGIN (.*) HUSHPICKS_JSON_END', b['payload']).group(1)) for b in posts][0]
     assert d['packSize'] == 7 and len(d['lineup']) == 7 and d['statueSlots'] == 1, d
-    assert d['statueLineup'][0]['collage'] == 11 and d['statueLineup'][0]['option'] == 3 and d['statueLineup'][0]['part'] == 'statue'
-    assert d['picks'][10]['part'] == 'statue' and d['picks'][0]['part'] == 'peds' and 'Statue #1 Collage 11 option 3' in d['summary']
+    assert d['statueLineup'][0]['collage'] == S1 and d['statueLineup'][0]['option'] == 3 and d['statueLineup'][0]['part'] == 'statue'
+    assert d['picks'][S1 - 1]['part'] == 'statue' and d['picks'][0]['part'] == 'peds' and ('Statue #1 Collage %d option 3' % S1) in d['summary']
+    assert d['finalNote'] == 'Love batch 2, make #3 shinier' and 'Final note: Love batch 2' in d['summary']
+    assert [b['final_note'] for b in posts][0] == 'Love batch 2, make #3 shinier'
+    print('PASS final note in payload, summary and email body')
     print('PASS statue pick + payload (statueLineup, part fields, summary)')
     ctx.close()
 
@@ -107,8 +112,44 @@ with sync_playwright() as p:
         assert r.returncode == 0, r.stderr
         rec = json.load(open(tmp + '/projects/super-sonic/submissions.json'))['clients']['Julius']
         assert rec['statueLineup'][0]['option'] == 3 and rec['statueSlots'] == 1 and rec['packSize'] == 7, rec
+        assert rec['overall'] == 'Love batch 2, make #3 shinier', rec['overall']
         r = subprocess.run([sys.executable, os.path.join(R, 'tools/make_picks_sheet.py'), tmp + '/payload.json', '--root', tmp, '-o', tmp + '/sheet.png', '--no-marked'], capture_output=True, text=True)
         assert r.returncode == 0, r.stderr
         print('PASS publish_opinion.py + make_picks_sheet.py with statueLineup')
     print('errors:', errs); assert not errs
     print('ALL PASS')
+
+# D) batches: Batch 2 first + open with its note, Batch 1 collapsed behind a toggle, drafts keep Batch 1 picks
+if CFG.get('batches'):
+    with sync_playwright() as p:
+        br = p.chromium.launch(); errs = []
+        for vp, name in (({'width': 1280, 'height': 900}, 'desktop'), ({'width': 390, 'height': 844}, 'mobile')):
+            c = br.new_context(viewport=vp)
+            c.route(re.compile(r'^(?!https://hushgazer\.github\.io/).*'), lambda r: r.abort())
+            c.route(LIVE + '**', serve(True))
+            c.add_init_script("try{sessionStorage.setItem('hush-who','Julius');sessionStorage.setItem('hush-who-auth','d1747f0fe458f88539181706839080c16ec6441c7081570e61c172cb05be351e')}catch(e){}")
+            pg = c.new_page(); pg.on('pageerror', lambda e: errs.append(str(e)))
+            # old Batch 1 draft (saved before batches existed): collage-3.png option 2 in slot 1
+            files = [x['file'] for x in CFG['collages'] if x.get('batch') == 1]
+            pg.goto(LIVE + 'super-sonic/'); pg.wait_for_selector('#part-tabs')
+            key = pg.evaluate("Object.keys(localStorage).length")
+            pg.evaluate("""(files) => { const picks = files.map(f => f === 'collage-3.png' ? [2] : []);
+              const k = Object.keys(sessionStorage).length; const tag = '%s';
+              localStorage.setItem('hush-picks:super-sonic:' + tag, JSON.stringify({picks, lineup:[{c:2,o:2}], packSize:7, files})); }""" % [x for x in CFG['clients'] if x['name'] == 'Julius'][0]['keyHash'][:8], files)
+            pg.reload(); pg.wait_for_selector('#part-tabs'); pg.wait_for_timeout(500)
+            g = pg.locator('#collages > .batch-group[data-part="peds"]')
+            assert g.count() == 2 and g.nth(0).get_attribute('data-batch') == '2' and g.nth(1).get_attribute('data-batch') == '1'
+            assert 'Hope these are better' in g.nth(0).text_content() and pg.is_visible('.batch-group[data-batch="2"] .batch-note')
+            assert 'is-collapsed' in g.nth(1).get_attribute('class') and pg.is_hidden('.batch-group[data-batch="1"][data-part="peds"] .batch-body')
+            assert pg.locator('#bar-thumbs .bar-slot[data-idx].preview-card').count() == 1, 'old Batch 1 pick kept in the bar'
+            b1 = pg.evaluate("[...document.querySelectorAll('.batch-group[data-batch=\"1\"] .collage')].map(s=>s.id)")
+            pg.click('.batch-group[data-batch="1"][data-part="peds"] .batch-toggle')
+            assert pg.is_visible('.batch-group[data-batch="1"][data-part="peds"] .batch-body')
+            assert pg.get_attribute('#%s .opt[data-opt="2"]' % b1[2], 'aria-pressed') == 'true'
+            pg.click('.batch-group[data-batch="1"][data-part="peds"] .batch-toggle')
+            assert pg.is_visible('#opinion-field') and 'final note' in pg.text_content('#opinion-field label').lower()
+            pg.evaluate("localStorage.clear()")
+            print('PASS batches (%s): Batch 2 first + note, Batch 1 collapsed/toggle, old pick kept, final note box' % name)
+            c.close()
+        assert not errs, errs
+        print('ALL PASS (batches)')

@@ -22,7 +22,7 @@ with sync_playwright() as p:
     pg.click('#admin-test'); pg.wait_for_selector('#test-banner .tb-who')
     pg.wait_for_selector('#client-badge:not([hidden])')
     assert 'Previewing as Julius' in pg.text_content('#client-badge'), pg.text_content('#client-badge')
-    assert pg.is_hidden('#opinion-field')
+    assert pg.is_visible('#opinion-field') and 'final note' in pg.text_content('#opinion-field label').lower()   # Final note box for every client
     assert pg.locator('#who-switch').count() == 0
     pg.screenshot(path=OUT + '/test-julius.png')
     for i in range(1, NL + 1): pg.click('#collage-%d .opt[data-opt="2"]' % i)

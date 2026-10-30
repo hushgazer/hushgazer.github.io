@@ -36,6 +36,17 @@
   var view = 'peds';      // current tab when the project has a statue part
   function hasStatue() { return !!parts && statueSlots > 0; }
   function partOf(i) { var c = collages[i]; return hasStatue() && c && c.part === 'statue' ? 'statue' : 'peds'; }
+  // ==== BATCHES (optional, per project) ================================
+  // project.json "batches": [{"id": 2, "title": "Batch 2", "note": "…"},
+  //                          {"id": 1, "title": "Batch 1 (earlier designs)", "collapsed": true}]
+  // Collages carry "batch": <id>. Batches show in that order (one group per part), each with
+  // its title + optional note; "collapsed": true hides the group behind a toggle (still openable).
+  // No "batches" -> page order and look exactly as before.
+  var batchDefs = [];
+  function batchOf(c) {
+    if (!batchDefs.length || !c || c.batch == null) return null;
+    return batchDefs.filter(function (b) { return String(b.id) === String(c.batch); })[0] || null;
+  }
   function statueCount() { var n = 0; collages.forEach(function (c, i) { if (partOf(i) === 'statue') n++; }); return n; }
   var collages = [];   // config
   var imgs = [];       // PNG Image() used for crop math / lineup / payload (masters)
@@ -128,8 +139,10 @@
     return b;
   }
 
+  // Full-quality masters of collapsed batches load only when a crop is first needed.
+  function ensureMaster(i) { var img = imgs[i]; if (img && !img.getAttribute('src') && img._src) img.src = img._src; return img; }
   function cropCanvas(i, opt, maxH) {
-    var img = imgs[i], b = bounds(collages[i]);
+    var img = ensureMaster(i), b = bounds(collages[i]);
     var cv = el('canvas', { role: 'img', 'aria-label': 'Collage ' + (i + 1) + ', option ' + opt });
     if (!img || !img.naturalWidth) return cv;
     var sy = cropTopOf(i), sx = b[opt - 1] * img.naturalWidth, sw = (b[opt] - b[opt - 1]) * img.naturalWidth, sh = img.naturalHeight - sy;
@@ -144,7 +157,7 @@
   function save() {
     try {
       localStorage.setItem(storeKey, JSON.stringify({ picks: picks, lineup: lineupOrder, packSize: packSize, statue: hasStatue() ? statueOrder : undefined, files: collageFiles() }));
-      if (isAdvisor()) localStorage.setItem(storeKey + ':notes', JSON.stringify({ notes: notes, overall: document.getElementById('overall').value, files: collageFiles() }));
+      if (isAdvisor() || finalNoteOn) localStorage.setItem(storeKey + ':notes', JSON.stringify({ notes: notes, overall: document.getElementById('overall').value, files: collageFiles() }));
     } catch (e) {}
   }
   function normalizeSlot(v) {
@@ -318,10 +331,10 @@
       }
       if (parts) { statueOrder = normalizeStatue(statueOrder); prunePicks(); }
     } catch (e) {}
-    if (isAdvisor()) {
+    if (isAdvisor() || finalNoteOn) {
       try {
         var nt = JSON.parse(localStorage.getItem(storeKey + ':notes'));
-        if (nt && Array.isArray(nt.notes)) notes = (remapIndex(nt.files) ? remapArray(nt.notes, remapIndex(nt.files)).map(function (v) { return Array.isArray(v) ? '' : v; }) : nt.notes).slice(0, collages.length);
+        if (nt && Array.isArray(nt.notes) && isAdvisor()) notes = (remapIndex(nt.files) ? remapArray(nt.notes, remapIndex(nt.files)).map(function (v) { return Array.isArray(v) ? '' : v; }) : nt.notes).slice(0, collages.length);
         if (nt && typeof nt.overall === 'string') document.getElementById('overall').value = nt.overall;
       } catch (e) {}
     }
@@ -463,6 +476,10 @@
   // "<Name>'s pick" tag on the character and a "<Name>'s opinion" section
   // below the last collage.
   var notes = [];      // advisor: notes[i] = text
+  // "Final note" box near Submit for every client (advisors: their overall opinion).
+  // Per project: "finalNote": false turns it off for deciders/name clients.
+  var finalNoteOn = false;
+  function finalNoteText() { var t = document.getElementById('overall'); return t && (finalNoteOn || isAdvisor()) ? t.value.trim() : ''; }
   function isAdvisor() { return mode === 'client' && client.role === 'advisor'; }
   function opinionsFor() {
     if (mode !== 'client' || client.role !== 'decider' || !Array.isArray(project.opinions)) return [];
@@ -474,6 +491,11 @@
   function collageLabel(c, i) {
     var l = c && c.label;
     if (!l || /^(collage|statue)\s*\d+$/i.test(String(l).trim())) {
+      if (batchDefs.length) {   // batches: count within the same part + batch (Collage 1…, Statue 1…)
+        var bt = batchOf(c), pt = partOf(i), q = 0;
+        for (var m = 0; m <= i; m++) if (partOf(m) === pt && batchOf(collages[m]) === bt) q++;
+        return (pt === 'statue' ? 'Statue ' : 'Collage ') + q;
+      }
       if (partOf(i) === 'statue') {   // statue collages count on their own: Statue 1, Statue 2…
         var k = 0; for (var j = 0; j <= i; j++) if (partOf(j) === 'statue') k++;
         return 'Statue ' + k;
@@ -540,7 +562,7 @@
     return Math.max(0, Math.round(t));
   }
   function nativeCrop(i, opt) {  // full-resolution canvas of one character
-    var img = imgs[i]; if (!img || !img.naturalWidth || !opt) return null;
+    var img = ensureMaster(i); if (!img || !img.naturalWidth || !opt) return null;
     var bx = cropBox(i, opt);
     var cv = document.createElement('canvas'); cv.width = bx.w; cv.height = bx.h;
     cv.getContext('2d').drawImage(img, bx.x, bx.y, bx.w, bx.h, 0, 0, bx.w, bx.h);
@@ -871,6 +893,7 @@
   function flashCollageOpt(i, opt) {
     var sec = document.getElementById('collage-' + (i + 1)); if (!sec) return;
     if (hasStatue()) switchPart(partOf(i), false);
+    expandFor(i);
     sec.scrollIntoView({ behavior: 'smooth', block: 'center' });
     var btn = sec.querySelector('.opt[data-opt="' + opt + '"]'); if (!btn) return;
     btn.classList.remove('op-flash'); void btn.offsetWidth; btn.classList.add('op-flash');
@@ -879,6 +902,7 @@
   // One advisor opinion as a pack row (same look as the sticky bar slots).
   function opinionBody(o, sec, own) {
     var line = opinionLineup(o), filled = line.filter(function (e) { return e && !e.gone; }).length;
+    if (o.overall && o.role && o.role !== 'advisor') sec.appendChild(el('p', { class: 'op-note-h' }, '\ud83d\udcdd Final note'));
     if (o.overall) sec.appendChild(el('blockquote', { class: 'op-quote' }, '\u201c' + o.overall + '\u201d'));
     sec.appendChild(el('p', { class: 'op-hint' }, (own ? 'Your pack, in your order' : 'Pack in the order ' + o.from + ' set it') + ' \u00b7 ' +
       filled + ' of ' + line.length + ' slots filled' + (filled < line.length ? ' (empty = remake)' : '') + ' \u00b7 tap one to jump to it.'));
@@ -947,7 +971,7 @@
     if (!isAdvisor()) return;
     try {
       localStorage.setItem(sentKey, JSON.stringify({ from: client.name, clientTag: client.tag, submittedAt: data.submittedAt,
-        overall: data.opinion || '', packSize: data.packSize, lineup: data.lineup, preview: !!PREVIEW,
+        overall: data.opinion || data.finalNote || '', packSize: data.packSize, lineup: data.lineup, preview: !!PREVIEW,
         statueSlots: data.statueSlots, statueLineup: data.statueLineup,
         picks: data.picks.map(function (p) { return { collage: p.collage, file: p.file, option: p.selected, note: p.note }; }) }));
     } catch (e) {}
@@ -1157,7 +1181,7 @@
     frame.appendChild(picture);
     var cropImg = new Image();
     cropImg.decoding = 'async';
-    cropImg.src = pngSrc;
+    if (c._lazy) cropImg._src = pngSrc; else cropImg.src = pngSrc;
     imgs[i] = cropImg;
     cropImg.addEventListener('load', renderSummary);
     display.addEventListener('load', renderSummary);
@@ -1299,6 +1323,7 @@
       clientTag: client ? client.tag : null,
       clientRole: client ? client.role : null,
       opinion: isAdvisor() ? document.getElementById('overall').value.trim() : undefined,
+      finalNote: finalNoteText() || undefined,
       test: TEST,
       previewAs: PREVIEW && client ? client.name : undefined,
       submittedAt: new Date().toISOString(),
@@ -1310,7 +1335,7 @@
           option: sel.length === 1 ? sel[0] : sel.slice(),
           selected: sel.slice(),
           options: c.options,
-          imageSize: { w: imgs[i].naturalWidth, h: imgs[i].naturalHeight },
+          imageSize: { w: imgs[i].naturalWidth || 0, h: imgs[i].naturalHeight || 0 },
           crop: sel.length === 1 ? cropBox(i, sel[0]) : undefined,
           crops: sel.map(function (opt) {
             var box = cropBox(i, opt);
@@ -1346,6 +1371,7 @@
         }).join('; ');
       }
     }
+    if (d.finalNote) d.summary += ' | Final note: ' + d.finalNote;
     return d;
   }
 
@@ -1464,6 +1490,7 @@
       card.appendChild(sstrip);
     }
 
+    if (data.finalNote && !advisor) card.appendChild(el('p', { class: 'celebrate-note' }, '\ud83d\udcdd Your note: \u201c' + data.finalNote + '\u201d'));
     var done = el('button', { type: 'button', class: 'btn celebrate-done' }, 'Done');
     done.addEventListener('click', dismissCelebrate);
     card.appendChild(done);
@@ -1529,6 +1556,7 @@
         client_tag: data.clientTag || '(no personal link)',
         client_role: data.clientRole || '(none)',
         opinion: data.opinion || '',
+        final_note: data.finalNote || '',
         notes: data.picks.filter(function (p) { return p.note; }).map(function (p) { return 'Collage ' + p.collage + ': ' + p.note; }).join(' | '),
         test: TEST ? 'yes (test submission, ignore)' : 'no',
         summary: data.summary,
@@ -1714,6 +1742,63 @@
     list.appendChild(box);
   }
 
+  function setupFinalNote() {
+    var f = document.getElementById('opinion-field'), ta = document.getElementById('overall');
+    if (!f || !ta || (!finalNoteOn && !isAdvisor())) return;
+    f.hidden = false; f.classList.add('final-note-field');
+    var lab = f.querySelector('label');
+    if (lab) lab.textContent = isAdvisor() ? 'Your overall opinion \u2014 anything else for Hush? (optional)' : 'Anything else? Leave a final note for Hush (optional)';
+    ta.setAttribute('placeholder', 'Changes you\u2019d like, what you loved, anything else\u2026');
+    if (!f.querySelector('.final-note-hint')) f.appendChild(el('p', { class: 'final-note-hint' }, 'Hush reads every note before the next round.'));
+    if (!isAdvisor()) ta.addEventListener('input', save);
+  }
+
+  // ==== BATCH GROUPS ========================================================
+  function setGroupOpen(g, open) {
+    var body = g.querySelector('.batch-body'), t = g.querySelector('.batch-toggle');
+    if (!body || !t) return;
+    body.hidden = !open; g.classList.toggle('is-collapsed', !open);
+    t.setAttribute('aria-expanded', open ? 'true' : 'false');
+    var tx = t.querySelector('.batch-toggle-tx'); if (tx) tx.textContent = open ? 'Hide' : 'Show';
+  }
+  function expandFor(i) {
+    var sec = document.getElementById('collage-' + (i + 1)); if (!sec) return;
+    var g = sec.closest && sec.closest('.batch-group'); if (g && g.classList.contains('is-collapsed')) setGroupOpen(g, true);
+  }
+  var groupN = 0;
+  function batchGroup(b, part, count) {
+    var g = el('div', { class: 'batch-group', 'data-batch': b ? String(b.id) : '' });
+    if (hasStatue()) g.setAttribute('data-part', part);
+    var bodyId = 'batch-body-' + (++groupN);
+    var body = el('div', { class: 'batch-body', id: bodyId });
+    if (b) {
+      var head = el('div', { class: 'batch-head' });
+      var title = (typeof b.title === 'string' && b.title.trim()) ? b.title.trim() : 'Batch ' + b.id;
+      var what = count + ' ' + (part === 'statue' ? (count === 1 ? 'statue collage' : 'statue collages') : (count === 1 ? 'collage' : 'collages'));
+      if (b.collapsed) {
+        var t = el('button', { type: 'button', class: 'batch-toggle', 'aria-expanded': 'true', 'aria-controls': bodyId });
+        t.appendChild(el('span', { class: 'batch-chev', 'aria-hidden': 'true' }, '\u25b8'));
+        t.appendChild(el('span', { class: 'batch-title' }, title));
+        t.appendChild(el('span', { class: 'batch-count' }, what));
+        t.appendChild(el('span', { class: 'batch-toggle-tx' }, 'Hide'));
+        t.addEventListener('click', function () { setGroupOpen(g, g.classList.contains('is-collapsed')); });
+        head.appendChild(t);
+      } else {
+        head.appendChild(el('h2', { class: 'batch-title' }, title));
+        head.appendChild(el('span', { class: 'batch-count' }, what));
+      }
+      g.appendChild(head);
+      if (typeof b.note === 'string' && b.note.trim()) {
+        var nb = el('p', { class: 'batch-note' + (b.collapsed ? ' batch-note-quiet' : '') });
+        if (!b.collapsed) nb.appendChild(el('span', { class: 'batch-note-ico', 'aria-hidden': 'true' }, '\u2728'));
+        nb.appendChild(document.createTextNode(b.note.trim()));
+        (b.collapsed ? body : g).appendChild(nb);
+      }
+    }
+    g.appendChild(body);
+    return g;
+  }
+
   function fail(msg) { app.textContent = ''; app.appendChild(el('p', { class: 'error' }, msg)); }
 
   // ==== HIDDEN PROJECTS ================================================
@@ -1773,6 +1858,17 @@
         Object.defineProperty(c, '_section', { value: curSec, enumerable: false, configurable: true, writable: true });
       });
       collages = ADMIN ? raw.slice() : raw.filter(function (c) { return c && !c.hidden; });
+      batchDefs = (Array.isArray(p.batches) ? p.batches : []).filter(function (b) { return b && b.id != null; });
+      if (batchDefs.length) {   // batch order first, then project.json order (drafts re-map by file name)
+        var rank = function (c) { var b = batchOf(c); return b ? batchDefs.indexOf(b) : batchDefs.length; };
+        collages = collages.map(function (c, k) { return { c: c, k: k }; })
+          .sort(function (a, b) { return rank(a.c) - rank(b.c) || a.k - b.k; }).map(function (x) { return x.c; });
+        collages.forEach(function (c) {
+          var b = batchOf(c);
+          Object.defineProperty(c, '_lazy', { value: !!(b && b.collapsed), enumerable: false, configurable: true, writable: true });
+        });
+      }
+      finalNoteOn = p.finalNote !== false;
       loadHushSubs();   // Hush: client picks previews (top of page) + Delete guard
       picks = collages.map(function () { return []; });
       lineupOrder = emptySlots();
@@ -1804,8 +1900,17 @@
       }
       if (hasStatue()) buildTabs();
       var list = document.getElementById('collages');
-      var lastSec = null, secN = 0;
+      var lastSec = null, secN = 0, target = list, lastKey = null, groups = [];
       collages.forEach(function (c, i) {
+        if (batchDefs.length) {   // one group per (batch, part) run
+          var bk = batchOf(c), key = (bk ? String(bk.id) : '') + '|' + partOf(i);
+          if (key !== lastKey) {
+            lastKey = key; lastSec = null; secN = 0;
+            var cnt = 0; collages.forEach(function (x, j) { if (batchOf(x) === bk && partOf(j) === partOf(i)) cnt++; });
+            var g = batchGroup(bk, partOf(i), cnt); list.appendChild(g); groups.push({ g: g, b: bk });
+            target = g.querySelector('.batch-body');
+          }
+        }
         if (c._section && c._section !== lastSec) {
           lastSec = c._section; secN++;
           var dv = document.createElement('div');
@@ -1815,10 +1920,15 @@
           var dh = document.createElement('h2'); dh.className = 'section-title'; dh.textContent = c._section.title;
           dv.appendChild(dh);
           if (c._section.note) { var dn = document.createElement('p'); dn.className = 'section-note'; dn.textContent = c._section.note; dv.appendChild(dn); }
-          list.appendChild(dv);
+          target.appendChild(dv);
         }
-        list.appendChild(renderCollage(c, i));
+        target.appendChild(renderCollage(c, i));
       });
+      groups.forEach(function (x) { if (x.b && x.b.collapsed) setGroupOpen(x.g, false); });
+      if (batchDefs.length) document.addEventListener('click', function (ev) {   // links into a collapsed batch open it
+        var a = ev.target.closest && ev.target.closest('a[href^="#collage-"]'); if (!a) return;
+        var n = Number(a.getAttribute('href').slice(9)) - 1; if (n >= 0 && n < collages.length) expandFor(n);
+      }, true);
       if (hasStatue()) renderStatueSoon();
       if (mode === 'locked') {
         app.classList.add('locked');
@@ -1850,6 +1960,7 @@
       } else {
         document.getElementById('name-field').hidden = false;
       }
+      setupFinalNote();
       collages.forEach(function (c, i) { if (picks[i] && picks[i].length) { syncCollageUI(i); } });
       renderSummary();
       document.getElementById('picks-form').addEventListener('submit', onSubmit);
