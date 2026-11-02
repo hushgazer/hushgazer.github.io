@@ -414,3 +414,7 @@ button.bar-slot-statue.bar-slot-empty{font:inherit;cursor:pointer;border-color:v
 .final-note-hint{margin:6px 0 0;color:var(--muted);font-size:.82rem}
 .op-note-h{margin:4px 0 2px;font-weight:700;color:var(--gold);font-size:.9rem}
 .celebrate-note{margin:8px auto 4px;max-width:46ch;color:var(--muted);font-style:italic}
+#send-error{padding:12px 14px;border-radius:10px;border:1px solid rgba(255,138,101,.5);background:rgba(255,138,101,.08)}
+#send-error .send-actions{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;margin:10px 0 4px}
+#send-error .send-mail{font-weight:700}
+#send-error .send-why{display:block;color:var(--muted)}

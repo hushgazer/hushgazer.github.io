@@ -1517,10 +1517,20 @@
     try { localStorage.removeItem(storeKey); } catch (e) {}
   }
 
-  function showError(msg) {
+  function showError(msg, body) {
     var err = document.getElementById('send-error');
-    err.hidden = false;
-    err.textContent = 'Sorry, your picks could not be sent. Please check your connection and press Submit again.' + (msg ? ' (' + msg + ')' : '');
+    err.hidden = false; err.textContent = '';
+    err.appendChild(el('strong', null, 'Your picks didn\u2019t go through yet \u2014 but they\u2019re saved on this device. '));
+    err.appendChild(document.createTextNode('We\u2019ll also try again automatically next time you open this page. '));
+    var again = el('button', { type: 'button', class: 'btn send-retry' }, 'Try again');
+    again.addEventListener('click', function () { document.getElementById('picks-form').requestSubmit ? document.getElementById('picks-form').requestSubmit() : document.getElementById('submit').click(); });
+    var p = el('p', { class: 'send-actions' }); p.appendChild(again);
+    if (body) {
+      var m = el('a', { href: mailtoFor(body), class: 'send-mail' }, 'Or email your picks to Hush');
+      p.appendChild(m);
+    }
+    err.appendChild(p);
+    if (msg) err.appendChild(el('small', { class: 'send-why' }, '(' + msg + ')'));
   }
 
   var sending = false;
@@ -1562,45 +1572,93 @@
         summary: data.summary,
         payload: 'HUSHPICKS_JSON_BEGIN ' + JSON.stringify(data) + ' HUSHPICKS_JSON_END'
     };
-    function withTimeout(ms) {
-      if (typeof AbortController === 'undefined') return {};
-      var c = new AbortController(); setTimeout(function () { c.abort(); }, ms); return { signal: c.signal };
-    }
-    function viaWorker() {
-      if (!PICKS_WORKER) return Promise.resolve(null);
-      var o = withTimeout(10000);
-      return fetch(PICKS_WORKER, Object.assign({
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
-      }, o)).then(function (r) {
-        return r.json().catch(function () { return {}; }).then(function (j) { return (r.ok && j.ok) ? j : null; });
-      }).catch(function () { return null; });
-    }
-    function viaFormSubmit() {
-      var direct = Object.assign({}, body);
-      if (!TEST && FORM_CC) direct._cc = FORM_CC;
-      return fetch(FORM_ENDPOINT, Object.assign({
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: JSON.stringify(direct)
-      }, withTimeout(20000))).then(function (r) {
-        return r.json().catch(function () { return {}; }).then(function (j) {
-          if (!r.ok || !(j.success === true || j.success === 'true')) throw new Error(j.message || ('HTTP ' + r.status));
-        });
-      });
-    }
-    viaWorker()
-      .then(function (w) {
-        if (w && w.relayed) return;                 // saved + emailed by the Worker
-        return viaFormSubmit().catch(function (err) {
-          if (w && w.stored) return;                // email failed but the Worker saved it: still counts
-          throw err;
-        });
-      })
-      .then(function () { sending = false; rememberSent(data); showThanks(data); })
+    lastBody = body;
+    deliver(body)
+      .then(function (res) { sending = false; clearOutbox(); rememberSent(data); showThanks(data); })
       .catch(function (err) {
         sending = false; btn.disabled = false; btn.textContent = 'Submit picks';
-        showError(err && err.message);
+        saveOutbox(body);
+        showError(err && err.message, body);
       });
+  }
+
+  // ==== DELIVERY ===========================================================
+  // 1) hush-picks Worker (stores every submission; retried once on a network error, and once
+  //    with only the core fields if it answers 4xx), then 2) FormSubmit email straight from the
+  //    browser (retried once). Success if EITHER the Worker stored it OR the email went out.
+  // On total failure the picks stay saved, the exact submission waits in a local outbox and is
+  // re-sent automatically when the page is opened again / the connection comes back.
+  var lastBody = null;
+  var CORE_FIELDS = ['_subject', '_template', '_captcha', '_honey', 'project', 'client_name', 'client_tag', 'client_role', 'opinion', 'notes', 'test', 'summary', 'payload'];
+  function withTimeout(ms) {
+    if (typeof AbortController === 'undefined') return {};
+    var c = new AbortController(); setTimeout(function () { c.abort(); }, ms); return { signal: c.signal };
+  }
+  function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  function postWorker(b) {
+    return fetch(PICKS_WORKER, Object.assign({
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b)
+    }, withTimeout(12000))).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (j) { return { status: r.status, ok: r.ok && !!j.ok, j: j }; });
+    }, function (e) { return { status: 0, ok: false, j: { error: (e && e.message) || 'network error' } }; });
+  }
+  function viaWorker(body) {
+    if (!PICKS_WORKER) return Promise.resolve(null);
+    return postWorker(body).then(function (r) {
+      if (r.ok) return r.j;
+      if (r.status === 0) return wait(1500).then(function () { return postWorker(body); }).then(function (r2) { return r2.ok ? r2.j : null; });
+      if (r.status >= 400 && r.status < 500 && r.status !== 429) {   // validation: resend the core fields only
+        var core = {}; CORE_FIELDS.forEach(function (k) { if (body[k] != null) core[k] = body[k]; });
+        if (body.final_note) core.summary = String(core.summary || '') + ' | Final note: ' + body.final_note;
+        return postWorker(core).then(function (r2) { return r2.ok ? r2.j : null; });
+      }
+      return null;
+    });
+  }
+  function postFormSubmit(body) {
+    var direct = Object.assign({}, body);
+    if (!TEST && FORM_CC) direct._cc = FORM_CC;
+    return fetch(FORM_ENDPOINT, Object.assign({
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify(direct)
+    }, withTimeout(20000))).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (j) {
+        if (!r.ok || !(j.success === true || j.success === 'true')) throw new Error(j.message || ('HTTP ' + r.status));
+      });
+    });
+  }
+  function viaFormSubmit(body) {
+    return postFormSubmit(body).catch(function () { return wait(2000).then(function () { return postFormSubmit(body); }); });
+  }
+  function deliver(body) {
+    return viaWorker(body).then(function (w) {
+      if (w && w.relayed) return { stored: true, emailed: true };
+      return viaFormSubmit(body).then(function () { return { stored: !!(w && w.stored), emailed: true }; }, function (err) {
+        if (w && w.stored) return { stored: true, emailed: false };   // saved by the Worker: counts as sent
+        throw err;
+      });
+    });
+  }
+  var outboxKey = function () { return storeKey + ':outbox'; };
+  function saveOutbox(body) { try { localStorage.setItem(outboxKey(), JSON.stringify({ at: new Date().toISOString(), body: body })); } catch (e) {} }
+  function clearOutbox() { try { localStorage.removeItem(outboxKey()); } catch (e) {} }
+  var outboxBusy = false;
+  function retryOutbox() {
+    if (outboxBusy || PREVIEW || !FORM_TARGET) return;
+    var ob = null; try { ob = JSON.parse(localStorage.getItem(outboxKey()) || 'null'); } catch (e) {}
+    if (!ob || !ob.body) return;
+    outboxBusy = true;
+    deliver(ob.body).then(function () {
+      outboxBusy = false; clearOutbox();
+      var err = document.getElementById('send-error'); if (err) err.hidden = true;
+      flashPickToast(null, { t: 'Your picks were sent to Hush \u2014 all good!', e: '\u2705' }, 3200);
+    }, function () { outboxBusy = false; });
+  }
+  function mailtoFor(body) {
+    var txt = (body.summary || '') + (body.final_note ? '\n\nFinal note: ' + body.final_note : '') +
+      '\n\n(' + (body.client_name || '') + ' #' + (body.client_tag || '') + ', ' + (body.project || '') + ')';
+    return 'mailto:hushgazer@gmail.com?subject=' + encodeURIComponent(body._subject || 'Hush picks') + '&body=' + encodeURIComponent(txt.slice(0, 1600));
   }
 
   function resetAll() {
@@ -1964,6 +2022,7 @@
       collages.forEach(function (c, i) { if (picks[i] && picks[i].length) { syncCollageUI(i); } });
       renderSummary();
       document.getElementById('picks-form').addEventListener('submit', onSubmit);
+      setTimeout(retryOutbox, 1500); window.addEventListener('online', retryOutbox);
       document.getElementById('reset').addEventListener('click', resetAll);
       var nm = document.getElementById('picks-form').elements.name;
       nm.addEventListener('input', function () {

@@ -153,3 +153,35 @@ if CFG.get('batches'):
             c.close()
         assert not errs, errs
         print('ALL PASS (batches)')
+
+# E) delivery: Worker rejects (400) + FormSubmit unreachable -> picks kept, clear retry + email link,
+#    outbox saved; next visit with a working Worker re-sends it automatically.
+with sync_playwright() as p:
+    br = p.chromium.launch(); errs = []; got = []; state = {'down': True}
+    c = br.new_context(viewport={'width': 1280, 'height': 900})
+    c.route(re.compile(r'^(?!https://hushgazer\.github\.io/|https://formsubmit\.co/|https://hush-picks\.hushgazer\.workers\.dev/).*'), lambda r: r.abort())
+    c.route(LIVE + '**', serve(True))
+    def worker(route):
+        hdr = {'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*'}
+        if route.request.method == 'OPTIONS': return route.fulfill(status=204, headers=hdr)
+        if state['down']: return route.fulfill(status=400, headers=hdr, content_type='application/json', body='{"ok":false,"error":"unknown field final_note"}')
+        got.append(json.loads(route.request.post_data)); route.fulfill(status=200, headers=hdr, content_type='application/json', body='{"ok":true,"stored":true,"relayed":false}')
+    c.route('https://hush-picks.hushgazer.workers.dev/**', worker)
+    c.route('https://formsubmit.co/**', lambda r: r.abort() if state['down'] else r.fulfill(status=200, headers={'Access-Control-Allow-Origin': '*'}, content_type='application/json', body='{"success":"true"}'))
+    c.add_init_script("try{sessionStorage.setItem('hush-who','Julius');sessionStorage.setItem('hush-who-auth','d1747f0fe458f88539181706839080c16ec6441c7081570e61c172cb05be351e')}catch(e){}")
+    pg = c.new_page(); pg.on('pageerror', lambda e: errs.append(str(e)))
+    pg.goto(LIVE + 'super-sonic/'); pg.wait_for_selector('#part-tabs')
+    for i in range(1, 4): pg.click('#collage-%d .opt[data-opt="1"]' % i)
+    pg.click('#tab-statue'); pg.click('#collages .collage[data-part="statue"] .opt[data-opt="1"]'); pg.fill('#overall', 'note')
+    pg.wait_for_timeout(2300); pg.click('#submit'); pg.wait_for_selector('#send-error:not([hidden])', timeout=30000)
+    t = pg.text_content('#send-error')
+    assert 'saved on this device' in t and pg.locator('#send-error .send-retry').count() == 1 and 'mailto:hushgazer@gmail.com' in pg.get_attribute('#send-error .send-mail', 'href')
+    assert pg.locator('#bar-thumbs .preview-card').count() == 4 and not pg.is_disabled('#submit')
+    assert pg.evaluate("Object.keys(localStorage).some(k => k.endsWith(':outbox'))")
+    print('PASS total failure: picks kept, Try again + email link, outbox saved')
+    state['down'] = False
+    pg.reload(); pg.wait_for_selector('#part-tabs'); pg.wait_for_timeout(4000)
+    assert got and got[0].get('final_note') == 'note' and not pg.evaluate("Object.keys(localStorage).some(k => k.endsWith(':outbox'))")
+    print('PASS outbox re-sent automatically on the next visit')
+    pg.evaluate("localStorage.clear()"); c.close()
+    assert not errs, errs
