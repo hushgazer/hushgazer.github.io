@@ -1,0 +1,104 @@
+{
+  "clients": {
+    "Julius": {
+      "from": "Julius",
+      "role": "decider",
+      "clientTag": "59877a90",
+      "submittedAt": "2026-11-02T16:24:00.000Z",
+      "overall": "",
+      "picks": [
+        {
+          "collage": 2,
+          "file": "collage-25.png",
+          "option": 5,
+          "part": "peds"
+        },
+        {
+          "collage": 3,
+          "file": "collage-26.png",
+          "option": 6,
+          "part": "peds"
+        },
+        {
+          "collage": 5,
+          "file": "collage-28.png",
+          "option": [
+            6,
+            7
+          ],
+          "part": "peds"
+        },
+        {
+          "collage": 6,
+          "file": "collage-29.png",
+          "option": 1,
+          "part": "peds"
+        },
+        {
+          "collage": 9,
+          "file": "collage-32.png",
+          "option": 5,
+          "part": "peds"
+        },
+        {
+          "collage": 10,
+          "file": "collage-33.png",
+          "option": 2,
+          "part": "peds"
+        },
+        {
+          "collage": 13,
+          "file": "collage-36.png",
+          "option": 2,
+          "part": "statue"
+        }
+      ],
+      "packSize": 7,
+      "lineup": [
+        {
+          "collage": 6,
+          "file": "collage-29.png",
+          "option": 1
+        },
+        {
+          "collage": 10,
+          "file": "collage-33.png",
+          "option": 2
+        },
+        {
+          "collage": 9,
+          "file": "collage-32.png",
+          "option": 5
+        },
+        {
+          "collage": 2,
+          "file": "collage-25.png",
+          "option": 5
+        },
+        {
+          "collage": 3,
+          "file": "collage-26.png",
+          "option": 6
+        },
+        {
+          "collage": 5,
+          "file": "collage-28.png",
+          "option": 6
+        },
+        {
+          "collage": 5,
+          "file": "collage-28.png",
+          "option": 7
+        }
+      ],
+      "statueSlots": 1,
+      "statueLineup": [
+        {
+          "collage": 13,
+          "file": "collage-36.png",
+          "option": 2
+        }
+      ]
+    }
+  }
+}
